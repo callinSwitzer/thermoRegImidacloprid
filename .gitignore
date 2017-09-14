@@ -38,3 +38,4 @@ vignettes/*.pdf
 
 # ignore all subdirectoies
 */*
+.Rproj.user
