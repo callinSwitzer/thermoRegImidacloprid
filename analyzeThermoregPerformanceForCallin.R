@@ -6,484 +6,283 @@
 library(ggplot2)
 library(plyr)
 library(viridis)
+library(lme4)
+library(tidyr)
+library(dplyr)
 
 # set ggplot theme
 theme_set(theme_bw())
 
-
-
 #Manually navigate to working directory
 setwd("data")
 
-kk <- 1
-# morning <- c(4,8)
-# evening <- c(18,22)
-#Create empty table for separate temperature outputs
-cnames <- c('colony', 'treatment', 'dayTime', 'day', 'cohort','airTPerf', 'broodTPerf')
-thermPerfData <- as.data.frame(matrix(nrow = 1,ncol = length(cnames)))
-colnames(thermPerfData) <- cnames
-
-vis = 0
 #Calculate therm performance 
 sp <- 32.5 # Define temperature set point
-	
-	
+
+#___________________________________________
+# cohort 1
+#___________________________________________
 data <- read.csv('summaryDataC1.csv')
-cohort <- 1
 #Adjust time to count from 6 in the morning
 treatList1 <- c('c', 't', 'c', 't', 't', 'c')
-
-
-
 data$time <- data$time + 6/24
-# now, does time == 0.0 mean midnight, or 6am?
 data$day <- floor(data$time)
-days <- unique(data$day)
-data$hour <- data$time - data$day #Rewrite data$hour
-
+# days <- unique(data$day) # shows how many days were included
+data$hour <- data$time - data$day
 #Calculate rounded brood temperature
 int <- 0.5
 data$ambientRnd <- round((data$ambient/int))*int
-daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
+daytimeRange <- c(0, 16/24) 
+#Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, 
+# but adjusted relatively to new timing (with 0 being 6 am on day one)
 data$cohort = 1
 
-
-table(data$day)
-# why are you excluding day 0 and 18? (in the loop for 1:17)
-
-
+#___________________________________________
+# cohort #2
+#___________________________________________
 data2 <- read.csv('summaryDataC2.csv')
-cohort <- 2
 treatList2 <- c('c', 't', 't', 't', 'c', 'c')
 #Adjust time to count from 6 in the morning
 data2$time <- data2$time + 6/24
 data2$day <- floor(data2$time)
-days <- unique(data2$day)
 data2$hour <- data2$time - data2$day
 #Calculate rounded brood temperature
 data2$ambientRnd <- round((data2$ambient/int))*int
-daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
 data2$cohort = 2
-head(data2)
 
-
+#___________________________________________
+# cohort #3
+#___________________________________________
 data3 <- read.csv('summaryDataC3.csv')
-cohort <- 3
 treatList3 <- c('t', 'c', 'c', 'c', 't', 't')
 #Adjust time to count from 6 in the morning
 data3$time <- data3$time + 6/24
 data3$day <- floor(data3$time)
-days <- unique(data3$day)
 data3$hour <- data3$time - data3$day
 #Calculate rounded brood temperature
 data3$ambientRnd <- round((data3$ambient/int))*int
-daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
 data3$cohort = 3
-head(data3)
 
-
+#___________________________________________
+# combine cohorts
+#___________________________________________
 combData <- rbind(data, data2, data3)
 
-head(combData)
-
-# make new time with random dates
+# Make the "time" variable into a datetime format -- dates are wrong, but times are right
 combData$time2 <- as.POSIXct(Sys.Date() + combData$time + combData$cohort * 20)
-indxs <- seq(from = 1, to = nrow(combData), length.out = 1000)
-plot(combData$c1air[indxs], x = combData$time2[indxs], type = 'l')
 
+# # plot a subsample of the data -- just to check it out
+# indxs <- seq(from = 1, to = nrow(combData), length.out = 1000)
+# 
+# ggplot(combData[indxs, ], aes(y = c1air, x = time2, color = as.factor(cohort))) + 
+#   geom_line() + 
+#   facet_wrap(~cohort, scales = 'free_x')
 
-# now convert to long format
-head(combData)
-library(tidyr)
-
-
+#___________________________________________
+# convert combined dataset to long format
+# and add some extra variables
+#___________________________________________
 data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
-head(data_long)
 
-
+# the colony variable now includes cohort_colony information
 data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2,2 ), sep = "_")
+
+# location is either air or brood
 data_long$location = substr(data_long$condition,start = 3,1000 )
 
-#paste(sort(unique(data_long$colony)), collapse = "\' , \'")
+# dayTime is either day or night
+data_long$dayTime = ifelse(data_long$hour> daytimeRange[1] & data_long$hour < daytimeRange[2], "night", "day")
 
-data_long$treatment <- mapvalues(data_long$colony, from = c('1_1' , '1_2' , '1_3' , '1_4' , '1_5' , '1_6' , '2_1' , '2_2' , '2_3' , '2_4' , '2_5' , '2_6' , '3_1' , '3_2' , '3_3' , '3_4' , '3_5' , '3_6'), to = c(treatList1, treatList2, treatList3))
+# double check to make sure the hours seem right
+# ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = dayTime, y = temp)) + 
+#   geom_boxplot()
 
-indxs2 <- seq(from = 1, to = nrow(data_long), length.out = 5000)
 
-ggplot(data_long[indxs2, ], aes(x = time2, y = temp, color = colony)) + 
-  geom_line() + 
-  facet_wrap(~location)
+# insert treatment
+data_long$treatment <- mapvalues(data_long$colony, 
+                                 from = c('1_1' , '1_2' , '1_3' , '1_4' , '1_5' , 
+                                          '1_6' , '2_1' , '2_2' , '2_3' , '2_4' , 
+                                          '2_5' , '2_6' , '3_1' , '3_2' , '3_3' , 
+                                          '3_4' , '3_5' , '3_6'), 
+                                 to = c(treatList1, treatList2, treatList3))
 
-ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) + 
-  geom_point() + 
+data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), to = c("control_grp", "treatment_grp"))
+
+# generate a subsample of data to speed up visualization
+indxs2 <- sample(1:nrow(data_long), size  = 10000)
+
+
+# show some smoothing options
+aa <- ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) + 
+  geom_point(alpha = 0.2) + 
   facet_wrap(~location) + 
   geom_hline(aes(yintercept = sp)) + 
-  scale_color_viridis(discrete = TRUE) + 
+  scale_color_viridis(discrete = TRUE) 
+
+# polynomial smooth
+aa + 
   stat_smooth(method = "lm", formula = y ~ poly(x, 3), size = 1)
 
+# log
+aa + 
+  stat_smooth(method = "lm", formula = y ~ log(x), size = 1)
 
+# generalized additive model smooth
+aa + 
+  stat_smooth(method = "gam", formula = y ~ s(x), size = 1)
+
+# loess
+aa + 
+  stat_smooth(method = "loess", size = 2)
+
+
+#___________________________________________
+# visualize brood temperature vs. 
+# ambient temperature
+#___________________________________________
+# new dataset that includes only brood temp (not air)
 brooddta <- data_long[data_long$location == "brood", ]
 
+# make a new variable that represents "day" as an integer
+brooddta$dayInt <- as.numeric(as.Date(brooddta$time2)) - min(as.numeric(as.Date(brooddta$time2)))
+
+# visualize brood temp, faceted by treatment, with hexbin plot
+# ggplot(brooddta, aes(x = ambient, y = temp, color = treatment)) + 
+#   geom_hex() + 
+#   facet_wrap(~treatment) + 
+#   geom_hline(aes(yintercept = sp)) + 
+#   scale_fill_viridis(option = "A")
+
+# create a subsample of brood data for visualization and fast modeling
+brooddta <- brooddta[sample(1:nrow(brooddta), size = 30000), ]
+
+# log-transformed model
+expMod <- lmer(temp ~ log(ambient) * treatment *dayTime+  (1|colony) + (1|dayInt), data = brooddta)
+summary(expMod)
+plot(expMod) # somewhat troubling -- residuals are very high, and fan shaped
+
+bb <- ggplot(brooddta, aes(x = ambient, y = temp, color = treatment)) +
+  geom_point(alpha = 0.5) + 
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)
+
+bb
 
 
 
+# predict and visualize from log-transormed model
+brooddta$expModPreds <- predict(expMod, re.form = NA)
+# note: re.form means ignore random effects, and predict an overall average
 
+bbb <- ggplot(brooddta,  aes(x = ambient, y = temp, color = treatment)) + 
+  geom_point(alpha = 0.01) + 
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
+  xlab("Temp (Ambient)") + 
+  ylab("Temp (Brood)") + 
+  geom_hline(aes(yintercept = sp)) + geom_vline(aes(xintercept = sp))
+bbb +  geom_line(aes( y=expModPreds, linetype = dayTime), size = 1)
 
-for(i in 1:17){
-	
-	curDat <- subset(data, day == i)
-		 dayInd <- curDat$hour > daytimeRange[1] & curDat$hour < daytimeRange[2]
-	 
-	 #Separate night and day chunks
-	dayDat <- curDat[dayInd,]
-	nightDat <- curDat[!dayInd,]
-	
-	for(j in 1:6){
-	 bi <- paste('c', j, 'brood', sep = "")
-	 ai <- paste('c', j, 'air', sep = "")
-
-	
-	#Daytime data
-	{
-	tmp <- aggregate(dayDat[,c(ai,bi, 'ambient')], list(dayDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 1
-	day <- i
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
-
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	#Nightime data
-	{
-	tmp <- aggregate(nightDat[,c(ai,bi, 'ambient')], list(nightDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 0
-	day <- i
-	
-x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
-
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	}
-	
-# tmp <- aggregate(dayDat, list(dayDat$ambientRnd), mean)
-# thermPerfData <- rbind(thermPerfData, tmp)
-	
-}
-
-
-data <- read.csv('summaryDataC2.csv')
-cohort <- 2
-treatList <- c('c', 't', 't', 't', 'c', 'c')
-#Remove transition times
-# data$hour <- data$time - floor(data$time)
-# morningInd <- data$hour > morning[1]/24 & data$hour < morning[2]/24
-# eveningInd <- data$hour > evening[1]/24 & data$hour < evening[2]/24
-# keeperInd <- !(morningInd | eveningInd)
-# data <- data[keeperInd,]
-#Adjust time to count from 6 in the morning
-data$time <- data$time + 6/24
-data$day <- floor(data$time)
-days <- unique(data$day)
-data$hour <- data$time - data$day
-#Calculate rounded brood temperature
-data$ambientRnd <- round((data$ambient/int))*int
-daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
-for(i in 1:9){
-	
-	curDat <- subset(data, day == i)
-		 dayInd <- curDat$hour > daytimeRange[1] & curDat$hour < daytimeRange[2]
-	 
-	 #Separate night and day chunks
-	dayDat <- curDat[dayInd,]
-	nightDat <- curDat[!dayInd,]
-	
-	for(j in 1:6){
-	 bi <- paste('c', j, 'brood', sep = "")
-	 ai <- paste('c', j, 'air', sep = "")
-
-	
-	#Daytime data
-	{
-	tmp <- aggregate(dayDat[,c(ai,bi, 'ambient')], list(dayDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 1
-	day <- i
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
-
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	#Nightime data
-	{
-	tmp <- aggregate(nightDat[,c(ai,bi, 'ambient')], list(nightDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 0
-	day <- i
-	
-x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
-
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	}
-# tmp <- aggregate(dayDat, list(dayDat$ambientRnd), mean)
-# thermPerfData <- rbind(thermPerfData, tmp)
-	
-}
+bbb +  stat_smooth(method = "loess", se = F,  span = 0.99, aes(linetype = dayTime), size = 2)
 
 
 
-data <- read.csv('summaryDataC3.csv')
-cohort <- 3
-treatList <- c('t', 'c', 'c', 'c', 't', 't')
-# #Remove transition times
-# data$hour <- data$time - floor(data$time)
-# morningInd <- data$hour > morning[1]/24 & data$hour < morning[2]/24
-# eveningInd <- data$hour > evening[1]/24 & data$hour < evening[2]/24
-# keeperInd <- !(morningInd | eveningInd)
-# data <- data[keeperInd,]
-#Adjust time to count from 6 in the morning
-data$time <- data$time + 6/24
-data$day <- floor(data$time)
-days <- unique(data$day)
-data$hour <- data$time - data$day
-#Calculate rounded brood temperature
-data$ambientRnd <- round((data$ambient/int))*int
-daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
-for(i in 1:9){
-	
-	curDat <- subset(data, day == i)
-  dayInd <- curDat$hour > daytimeRange[1] & curDat$hour < daytimeRange[2]
-	 
-	#Separate night and day chunks
-	dayDat <- curDat[dayInd,]
-	nightDat <- curDat[!dayInd,]
-	
-	
-	# plot(dayDat$c1brood, ylim = c(10, 40))
-	# points(dayDat$control, col = 'red')
-	# points(dayDat$c1air)
-	# points(dayDat$ambient)
-	for(j in 1:6){
-	 bi <- paste('c', j, 'brood', sep = "")
-	 ai <- paste('c', j, 'air', sep = "")
+bb + facet_wrap(~treatment + dayTime) + geom_line(data = brooddta, aes(y = expModPreds), col = 'black')
 
-	
-	#Daytime data
-	{
-	tmp <- aggregate(dayDat[,c(ai,bi, 'ambient')], list(dayDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 1
-	day <- i
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	
-	x <- tmp$ambient 
-	y <- tmp[,ai]
-	airModel <- lm(y~x + 0)
-	
-	plot(x, y); abline(airModel)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	plot(x, y); abline(broodModel)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
+bbb + geom_line(data = brooddta, aes(y = expModPreds, linetype =  dayTime), size = 1)
 
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	#Nightime data
-	{
-	tmp <- aggregate(nightDat[,c(ai,bi, 'ambient')], list(nightDat$ambientRnd), mean)
-	colony <- j
-	treatment <- treatList[j]
-	dayTime <- 0
-	day <- i
-	
-x <- tmp$ambient - sp
-	y <- tmp[,ai] - sp
-	airModel <- lm(y~x + 0)
-	
-	x <- tmp$ambient - sp
-	y <- tmp[,bi] - sp
-	broodModel <- lm(y~x + 0)
-	
-	tmp <- thermPerfData[1,]
-	tmp$colony <- colony
-	tmp$treatment <- treatment
-	tmp[,1:5] <- c(colony, treatment, dayTime, day, cohort)
-	tmp$airTPerf <- summary(airModel)$coefficients[1]
-	tmp$broodTPerf <- summary(broodModel)$coefficients[1]
-
-	 thermPerfData <- rbind(thermPerfData, tmp)
-	}
-	
-	}
-# tmp <- aggregate(dayDat, list(dayDat$ambientRnd), mean)
-# thermPerfData <- rbind(thermPerfData, tmp)
-	
-}
-
-
-
-thermPerfData <- thermPerfData[complete.cases(thermPerfData),]
-
-
-
-head(thermPerfData)
-
-
-ggplot(thermPerfData, aes(x = airTPerf, y = broodTPerf, color = treatment)) + 
-  geom_point() + 
-  geom_smooth() + 
+bb + geom_line(data = brooddta, aes(y = expModPreds, color = interaction(treatment, dayTime)), size = 3) + 
   facet_wrap(~dayTime)
 
 
-plot(thermPerfData$airTPerf, thermPerfData$broodTPerf, col = as.factor(thermPerfData$treatment))
+#___________________________________________
+# Analysis to visualize the distance less than 32.5
+# How good are bees at maintaining temperature at 32.5?
+#___________________________________________
+
+brooddta$brood_dist_from_32<- ((sp - brooddta$temp)) + 0.1 
+# add 0.1 so that 0's are not a problem
+
+brooddta$amb_dist_from_32 <- (sp - brooddta$ambient) + 0.1
 
 
+# visualize where the origin is going to go
+bb + geom_hline(aes(yintercept = sp)) + geom_vline(aes(xintercept = sp)) + 
+  labs(y = "Brood temp (C)", x = "ambient temp (C)")
 
 
+# visualize reorientation of data
+cc <- ggplot(brooddta, aes(x = amb_dist_from_32, y = brood_dist_from_32, color = treatment)) + 
+  geom_point(alpha = 0.5) + 
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
+  xlab("Number of degrees below from 32.5 C (Ambient)") + 
+  ylab("Number of degrees below 32.5 C (Brood)") + 
+  geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0)) 
+cc
 
 
-### Plotting and run models
-cls <- c('darkgreen', 'darkred', 'green', 'red')
-#Invert thermPerfs (to 1-slope)
-thermPerfData[,c('airTPerf', 'broodTPerf')] <-  1-thermPerfData[,c('airTPerf', 'broodTPerf')]
-thermPerfData$uniqueCol <- as.factor(paste(thermPerfData$colony, thermPerfData$cohort))
-
-thermPerfData$day <- as.numeric(thermPerfData$day)
-subdata <- subset(thermPerfData, day > 0 & day < 5)
-
-#pdf('/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/figures/thermPerf.pdf')
-boxplot(broodTPerf~treatment*dayTime, data = subdata, col = c('green', 'red'), xlab = "Treatment", ylab = "Brood thermoregulation performance", boxwex = 0.7, at = c(1,2,4,5), outline = FALSE, whisklty = 1, axes = FALSE, boxlwd = 0.1, whisklwd = 0.2)
-axis(2)
-#dev.off()
-
-library(lme4)
-library(lmerTest)
-model <- lmer(broodTPerf~treatment*dayTime+(1|day) +(1|uniqueCol) + (1|cohort), data = subdata)
-summary(model)
-plot(model)
-
-#Significant interaction between treatment and nightime, so build separate models for each time period
-modelDay <- lmer(broodTPerf~treatment+(1|day) +(1|uniqueCol) + (1|cohort), data = subset(subdata, dayTime == 1))
-modelNight <- lmer(broodTPerf~treatment+(1|day) +(1|uniqueCol) + (1|cohort), data = subset(subdata, dayTime == 0))
+dd <- ggplot(brooddta, aes(x = abs(amb_dist_from_32), y = abs(brood_dist_from_32), color = treatment)) + 
+  geom_point(alpha = 0.5) + 
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
+  xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
+  ylab("Absolute number of degrees from 32.5 C (Brood)") + 
+  geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0))
+dd
 
 
+#___________________________________________
+# Fit a Generalized Linear Mixed Effects Model
+# How good are bees at maintaining temperature at 32.5?
+# Holding the temperature constant, does is night time associated
+# with bees not being able to keep brood temperature near 32.5
+#___________________________________________
+brooddta$brood_abs_dist_from_32 <- abs(brooddta$brood_dist_from_32) + 0.1 
+# the 0.1 makes the dataset have no zeros (requirement for gamma glm)
+brooddta$amb_abs_dist_from_32 <- abs(brooddta$amb_dist_from_32)
+
+# get scaled amb_abs_dist_from_32, which will be used for modeling
+brooddta$scaled_amb_abs_dist_from_32 <- scale(brooddta$amb_abs_dist_from_32, center = TRUE, scale = TRUE)
+
+gm1 <- glmer(brood_abs_dist_from_32 ~ scaled_amb_abs_dist_from_32* treatment + dayTime   + (1|dayInt) + (1|colony), data = brooddta, family = Gamma(link = "log"))
+
+vif.mer <- function (fit) {
+  ## adapted from rms::vif
+  
+  v <- vcov(fit)
+  nam <- names(fixef(fit))
+  
+  ## exclude intercepts
+  ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+  if (ns > 0) {
+    v <- v[-(1:ns), -(1:ns), drop = FALSE]
+    nam <- nam[-(1:ns)]
+  }
+  
+  d <- diag(v)^0.5
+  v <- diag(solve(v/(d %o% d)))
+  names(v) <- nam
+  v
+}
+
+vif.mer(gm1) # doesn't seem too high, when there are no interactions
+
+summary(gm1)
+plot(gm1)
 
 
+preds <- predict(gm1, type = 'response', re.form=NA)
+predDF<- data.frame(x = brooddta$scaled_amb_abs_dist_from_32, y = preds, treatment = brooddta$treatment, colony = brooddta$colony, dayTime = brooddta$dayTime)
+predDF <- predDF[order(predDF$x, predDF$colony), ]
+
+centt <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:center")
+scle <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:scale")
 
 
-# #### Plotting stuff
-# data <- read.csv('/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/data/cohort2/summaryData.csv')
-
-# subdata = subset(data, time > 1)
-# times <- subdata$time
-# xl <- c(10,35)
-# for(i in seq(1,length(times),10)){
-	
-	# plot(control[i]~ambient[i], data = subdata, xlim = xl, ylim = xl, pch = 19, cex = 0.4, axes = FALSE, ann = FALSE)
-	# if(i == 1){
-		# axis(1)
-		# axis(2)
-	# }
-# par(new = TRUE)
-	
-	
-# }
+ee <- ggplot(brooddta, aes(x = abs(amb_dist_from_32), y = abs(brood_dist_from_32), color = treatment)) + 
+  geom_point(alpha = 0.02) + 
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
+  xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
+  ylab("Absolute number of degrees from 32.5 C (Brood)") + 
+  geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0))
+ee +  geom_line(data = predDF, aes(x = (x * scle) + centt, y=y, linetype = interaction(dayTime)), size = 1)
 
 
-# #png('/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/figures/ControlTemps.png')
-# par(mfcol = c(1,2))
-# data <- read.csv('/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/data/cohort2/summaryData.csv')
-# subdata = subset(data, time > 1)
-	# plot(control~ambient, data = subdata, xlim = xl, ylim = xl, pch = 19, cex = 0.3, axes = FALSE, col = rgb(1, 0.5, 0.02, 0.2),xlab = "Ambient Temperature (C)", ylab = "Sham Brood Temperature (C)")
-	# axis(1)
-	# axis(2)
-	# abline (a = 0, b = 1, lty = 2, lwd = 2, col = 'grey50')
-		# #lines(c1brood~ambient, data = subdata, col = rgb(0.5, 1, 0.5, 0.3))
-
-	
-# data <- read.csv('/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/data/cohort1/summaryData.csv')
-# subdata = subset(data, time > 1)
-	# plot(control~ambient, data = subdata, xlim = xl, ylim = xl, pch = 19, cex = 0.3, axes = FALSE, col = rgb(1, 0.5, 0.02, 0.2),xlab = "Ambient Temperature (C)", ylab = "Sham Air Temperature (C)")
-	# axis(1)
-	# axis(2)
-	# abline (a = 0, b = 1, lty = 2, lwd = 2, col = 'grey50')
-	
-	# #lines(c1air~ambient, data = subdata, col = rgb(0.5, 1, 0.5, 0.3))
-# #dev.off()
+dev.off()
