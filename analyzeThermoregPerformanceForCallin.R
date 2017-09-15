@@ -1,5 +1,19 @@
+# Callin Switzer
+# 14 Sept 2017
+# Checking over James' code for analysis of thermoregulation data
+
+
+library(ggplot2)
+library(plyr)
+library(viridis)
+
+# set ggplot theme
+theme_set(theme_bw())
+
+
+
 #Manually navigate to working directory
-setwd("/Users/james/Dropbox/Work/Neonicotinoids/thermoregulationExpts/dataForCallin")
+setwd("data")
 
 kk <- 1
 # morning <- c(4,8)
@@ -11,29 +25,107 @@ colnames(thermPerfData) <- cnames
 
 vis = 0
 #Calculate therm performance 
-	sp <- 32.5 # Define temperature set point
+sp <- 32.5 # Define temperature set point
 	
 	
 data <- read.csv('summaryDataC1.csv')
 cohort <- 1
 #Adjust time to count from 6 in the morning
-treatList <- c('c', 't', 'c', 't', 't', 'c')
-head(data)
-#Remove transition times
-# data$hour <- data$time - floor(data$time)
-# morningInd <- data$hour > morning[1]/24 & data$hour < morning[2]/24
-# eveningInd <- data$hour > evening[1]/24 & data$hour < evening[2]/24
-# keeperInd <- !(morningInd | eveningInd)
-# data <- data[keeperInd,]
+treatList1 <- c('c', 't', 'c', 't', 't', 'c')
+
+
 
 data$time <- data$time + 6/24
+# now, does time == 0.0 mean midnight, or 6am?
 data$day <- floor(data$time)
 days <- unique(data$day)
 data$hour <- data$time - data$day #Rewrite data$hour
+
 #Calculate rounded brood temperature
 int <- 0.5
 data$ambientRnd <- round((data$ambient/int))*int
 daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
+data$cohort = 1
+
+
+table(data$day)
+# why are you excluding day 0 and 18? (in the loop for 1:17)
+
+
+data2 <- read.csv('summaryDataC2.csv')
+cohort <- 2
+treatList2 <- c('c', 't', 't', 't', 'c', 'c')
+#Adjust time to count from 6 in the morning
+data2$time <- data2$time + 6/24
+data2$day <- floor(data2$time)
+days <- unique(data2$day)
+data2$hour <- data2$time - data2$day
+#Calculate rounded brood temperature
+data2$ambientRnd <- round((data2$ambient/int))*int
+daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
+data2$cohort = 2
+head(data2)
+
+
+data3 <- read.csv('summaryDataC3.csv')
+cohort <- 3
+treatList3 <- c('t', 'c', 'c', 'c', 't', 't')
+#Adjust time to count from 6 in the morning
+data3$time <- data3$time + 6/24
+data3$day <- floor(data3$time)
+days <- unique(data3$day)
+data3$hour <- data3$time - data3$day
+#Calculate rounded brood temperature
+data3$ambientRnd <- round((data3$ambient/int))*int
+daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, but adjusted relatively to new timing (with 0 being 6 am on day one)
+data3$cohort = 3
+head(data3)
+
+
+combData <- rbind(data, data2, data3)
+
+head(combData)
+
+# make new time with random dates
+combData$time2 <- as.POSIXct(Sys.Date() + combData$time + combData$cohort * 20)
+indxs <- seq(from = 1, to = nrow(combData), length.out = 1000)
+plot(combData$c1air[indxs], x = combData$time2[indxs], type = 'l')
+
+
+# now convert to long format
+head(combData)
+library(tidyr)
+
+
+data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
+head(data_long)
+
+
+data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2,2 ), sep = "_")
+data_long$location = substr(data_long$condition,start = 3,1000 )
+
+#paste(sort(unique(data_long$colony)), collapse = "\' , \'")
+
+data_long$treatment <- mapvalues(data_long$colony, from = c('1_1' , '1_2' , '1_3' , '1_4' , '1_5' , '1_6' , '2_1' , '2_2' , '2_3' , '2_4' , '2_5' , '2_6' , '3_1' , '3_2' , '3_3' , '3_4' , '3_5' , '3_6'), to = c(treatList1, treatList2, treatList3))
+
+indxs2 <- seq(from = 1, to = nrow(data_long), length.out = 5000)
+
+ggplot(data_long[indxs2, ], aes(x = time2, y = temp, color = colony)) + 
+  geom_line() + 
+  facet_wrap(~location)
+
+ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) + 
+  geom_point() + 
+  facet_wrap(~location) + 
+  geom_hline(aes(yintercept = sp)) + 
+  scale_color_viridis(discrete = TRUE) + 
+  geom_smooth()
+
+
+
+
+
+
 for(i in 1:17){
 	
 	curDat <- subset(data, day == i)
@@ -219,12 +311,17 @@ daytimeRange <- c(0, 16/24) #Slightly tricky here - this is now isolating the ho
 for(i in 1:9){
 	
 	curDat <- subset(data, day == i)
-		 dayInd <- curDat$hour > daytimeRange[1] & curDat$hour < daytimeRange[2]
+  dayInd <- curDat$hour > daytimeRange[1] & curDat$hour < daytimeRange[2]
 	 
-	 #Separate night and day chunks
+	#Separate night and day chunks
 	dayDat <- curDat[dayInd,]
 	nightDat <- curDat[!dayInd,]
 	
+	
+	# plot(dayDat$c1brood, ylim = c(10, 40))
+	# points(dayDat$control, col = 'red')
+	# points(dayDat$c1air)
+	# points(dayDat$ambient)
 	for(j in 1:6){
 	 bi <- paste('c', j, 'brood', sep = "")
 	 ai <- paste('c', j, 'air', sep = "")
@@ -242,9 +339,18 @@ for(i in 1:9){
 	y <- tmp[,ai] - sp
 	airModel <- lm(y~x + 0)
 	
+	
+	x <- tmp$ambient 
+	y <- tmp[,ai]
+	airModel <- lm(y~x + 0)
+	
+	plot(x, y); abline(airModel)
+	
 	x <- tmp$ambient - sp
 	y <- tmp[,bi] - sp
 	broodModel <- lm(y~x + 0)
+	
+	plot(x, y); abline(broodModel)
 	
 	tmp <- thermPerfData[1,]
 	tmp$colony <- colony
@@ -294,7 +400,16 @@ thermPerfData <- thermPerfData[complete.cases(thermPerfData),]
 
 
 
+head(thermPerfData)
 
+
+ggplot(thermPerfData, aes(x = airTPerf, y = broodTPerf, color = treatment)) + 
+  geom_point() + 
+  geom_smooth() + 
+  facet_wrap(~dayTime)
+
+
+plot(thermPerfData$airTPerf, thermPerfData$broodTPerf, col = as.factor(thermPerfData$treatment))
 
 
 
@@ -318,6 +433,7 @@ axis(2)
 library(lme4)
 library(lmerTest)
 model <- lmer(broodTPerf~treatment*dayTime+(1|day) +(1|uniqueCol) + (1|cohort), data = subdata)
+summary(model)
 plot(model)
 
 #Significant interaction between treatment and nightime, so build separate models for each time period
