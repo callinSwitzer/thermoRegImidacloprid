@@ -119,7 +119,10 @@ ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) +
   facet_wrap(~location) + 
   geom_hline(aes(yintercept = sp)) + 
   scale_color_viridis(discrete = TRUE) + 
-  geom_smooth()
+  stat_smooth(method = "lm", formula = y ~ poly(x, 3), size = 1)
+
+
+brooddta <- data_long[data_long$location == "brood", ]
 
 
 
