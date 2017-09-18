@@ -9,6 +9,7 @@ library(viridis)
 library(lme4)
 library(tidyr)
 library(dplyr)
+library(lubridate)
 
 # set ggplot theme
 theme_set(theme_bw())
@@ -83,6 +84,7 @@ combData$time2 <- as.POSIXct(Sys.Date() + combData$time + combData$cohort * 20)
 # and add some extra variables
 #___________________________________________
 data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
+head(data_long)
 
 # the colony variable now includes cohort_colony information
 data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2,2 ), sep = "_")
@@ -92,11 +94,6 @@ data_long$location = substr(data_long$condition,start = 3,1000 )
 
 # dayTime is either day or night
 data_long$dayTime = ifelse(data_long$hour> daytimeRange[1] & data_long$hour < daytimeRange[2], "night", "day")
-
-# double check to make sure the hours seem right
-# ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = dayTime, y = temp)) + 
-#   geom_boxplot()
-
 
 # insert treatment
 data_long$treatment <- mapvalues(data_long$colony, 
@@ -108,11 +105,34 @@ data_long$treatment <- mapvalues(data_long$colony,
 
 data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), to = c("control_grp", "treatment_grp"))
 
+#___________________________________________
+# double check to make sure the hours seem right
+#___________________________________________
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = dayTime, y = temp)) +
+  geom_boxplot()
+
+
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = hour, y = temp)) +
+  geom_point() + 
+  facet_wrap(~dayTime)
+
+data_long$time3 <- hour(data_long$time2) + minute(data_long$time2)/60 
+
+
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time3, y = temp)) +
+  geom_point() + 
+  facet_wrap(~dayTime + cohort, labeller = label_both) + 
+  labs(x = "hour of day", y = "temp") + 
+  geom_vline(aes(xintercept = 8)) + 
+  geom_vline(aes(xintercept = 16))
+
+#___________________________________________
+# Visualize some smooth options
+#___________________________________________
+
 # generate a subsample of data to speed up visualization
 indxs2 <- sample(1:nrow(data_long), size  = 10000)
 
-
-# show some smoothing options
 aa <- ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) + 
   geom_point(alpha = 0.2) + 
   facet_wrap(~location) + 
@@ -282,7 +302,12 @@ ee <- ggplot(brooddta, aes(x = abs(amb_dist_from_32), y = abs(brood_dist_from_32
   xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
   ylab("Absolute number of degrees from 32.5 C (Brood)") + 
   geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0))
-ee +  geom_line(data = predDF, aes(x = (x * scle) + centt, y=y, linetype = interaction(dayTime)), size = 1)
+ee +  geom_line(data = predDF, aes(x = (x * scle) + centt, y=y, linetype = dayTime), size = 1)
+
+
+## convert back to origin at (0,0)
+
+
 
 
 dev.off()
