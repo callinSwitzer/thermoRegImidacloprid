@@ -1,6 +1,6 @@
 # Callin Switzer
 # 14 Sept 2017
-# Checking over James' code for analysis of thermoregulation data
+# Looking over James' code for analysis of thermoregulation data
 
 
 library(ggplot2)
