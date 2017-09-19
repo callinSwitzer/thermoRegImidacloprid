@@ -26,7 +26,6 @@ sp <- 32.5 # Define temperature set point
 data <- read.csv('summaryDataC1.csv')
 #Adjust time to count from 6 in the morning
 treatList1 <- c('c', 't', 'c', 't', 't', 'c')
-data$time <- data$time + 6/24
 data$day <- floor(data$time)
 # days <- unique(data$day) # shows how many days were included
 data$hour <- data$time - data$day
@@ -44,7 +43,7 @@ data$cohort = 1
 data2 <- read.csv('summaryDataC2.csv')
 treatList2 <- c('c', 't', 't', 't', 'c', 'c')
 #Adjust time to count from 6 in the morning
-data2$time <- data2$time + 6/24
+# data2$time <- data2$time + 6/24
 data2$day <- floor(data2$time)
 data2$hour <- data2$time - data2$day
 #Calculate rounded brood temperature
@@ -57,7 +56,7 @@ data2$cohort = 2
 data3 <- read.csv('summaryDataC3.csv')
 treatList3 <- c('t', 'c', 'c', 'c', 't', 't')
 #Adjust time to count from 6 in the morning
-data3$time <- data3$time + 6/24
+# data3$time <- data3$time + 6/24
 data3$day <- floor(data3$time)
 data3$hour <- data3$time - data3$day
 #Calculate rounded brood temperature
@@ -69,9 +68,20 @@ data3$cohort = 3
 #___________________________________________
 combData <- rbind(data, data2, data3)
 
-# Make the "time" variable into a datetime format -- dates are wrong, but times are right
-combData$time2 <- as.POSIXct(Sys.Date() + combData$time + combData$cohort * 20)
+# converts time to a proportion of a day (0 is midnight, 0.5 is noon)
+combData$time1 <- (combData$time) %% 1
 
+# Make the "time" variable into a datetime format -- dates are wrong
+combData$time2 <- format(as.POSIXct((combData$time1) * 86400, origin = "1970-01-01", tz = "UTC"), "%H:%M:%S")
+
+# time3 is the hour as a number 
+combData$time3 <- as.numeric(substr(combData$time2, 1,2)) +
+  as.numeric(substr(combData$time2, 4,5))/60 + 
+  as.numeric(substr(combData$time2, 7,8)) / 60 / 60
+
+head(combData)
+  
+  
 # # plot a subsample of the data -- just to check it out
 # indxs <- seq(from = 1, to = nrow(combData), length.out = 1000)
 # 
@@ -93,7 +103,7 @@ data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2
 data_long$location = substr(data_long$condition,start = 3,1000 )
 
 # dayTime is either day or night
-data_long$dayTime = ifelse(data_long$hour> daytimeRange[1] & data_long$hour < daytimeRange[2], "night", "day")
+data_long$dayTime = ifelse(data_long$time3> 6 & data_long$time3 < 20, "day", "night")
 
 # insert treatment
 data_long$treatment <- mapvalues(data_long$colony, 
@@ -111,20 +121,22 @@ data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), to = c
 ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = dayTime, y = temp)) +
   geom_boxplot()
 
-
-ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = hour, y = temp)) +
+# visualize times vs. temps, to see if the times are aligned
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), 
+       aes(x = time %% 1, y = temp, color = as.factor(cohort))) +
   geom_point() + 
-  facet_wrap(~dayTime)
+  geom_smooth(aes(group = cohort)) + 
+  labs(x = "original temp scale")
 
-data_long$time3 <- hour(data_long$time2) + minute(data_long$time2)/60 
+# ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time1, y = temp, group = cohort)) +
+#   geom_point()  + 
+#   geom_smooth(aes(color = cohort)) + 
+#   labs(x = "new temp scale -- hottest around noon") 
 
-
-ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time3, y = temp)) +
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time3, y = temp, color = cohort)) +
   geom_point() + 
-  facet_wrap(~dayTime + cohort, labeller = label_both) + 
-  labs(x = "hour of day", y = "temp") + 
-  geom_vline(aes(xintercept = 8)) + 
-  geom_vline(aes(xintercept = 16))
+  labs(x = 'new temp scale, hours of the day') +   
+  geom_smooth(aes(group = cohort)) 
 
 #___________________________________________
 # Visualize some smooth options
@@ -164,7 +176,7 @@ aa +
 brooddta <- data_long[data_long$location == "brood", ]
 
 # make a new variable that represents "day" as an integer
-brooddta$dayInt <- as.numeric(as.Date(brooddta$time2)) - min(as.numeric(as.Date(brooddta$time2)))
+brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
 # visualize brood temp, faceted by treatment, with hexbin plot
 # ggplot(brooddta, aes(x = ambient, y = temp, color = treatment)) + 
@@ -174,7 +186,7 @@ brooddta$dayInt <- as.numeric(as.Date(brooddta$time2)) - min(as.numeric(as.Date(
 #   scale_fill_viridis(option = "A")
 
 # create a subsample of brood data for visualization and fast modeling
-brooddta <- brooddta[sample(1:nrow(brooddta), size = 30000), ]
+#brooddta <- brooddta[sample(1:nrow(brooddta), size = 30000), ]
 
 # log-transformed model
 expMod <- lmer(temp ~ log(ambient) * treatment *dayTime+  (1|colony) + (1|dayInt), data = brooddta)
@@ -217,11 +229,9 @@ bb + geom_line(data = brooddta, aes(y = expModPreds, color = interaction(treatme
 # Analysis to visualize the distance less than 32.5
 # How good are bees at maintaining temperature at 32.5?
 #___________________________________________
+brooddta$brood_dist_from_32<- (sp - brooddta$temp)
 
-brooddta$brood_dist_from_32<- ((sp - brooddta$temp)) + 0.1 
-# add 0.1 so that 0's are not a problem
-
-brooddta$amb_dist_from_32 <- (sp - brooddta$ambient) + 0.1
+brooddta$amb_dist_from_32 <- (sp - brooddta$ambient)
 
 
 # visualize where the origin is going to go
@@ -239,10 +249,10 @@ cc <- ggplot(brooddta, aes(x = amb_dist_from_32, y = brood_dist_from_32, color =
 cc
 
 
-dd <- ggplot(brooddta, aes(x = abs(amb_dist_from_32), y = abs(brood_dist_from_32), color = treatment)) + 
+dd <- ggplot(brooddta, aes(x = amb_dist_from_32, y = abs(brood_dist_from_32), color = treatment)) + 
   geom_point(alpha = 0.5) + 
   scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
-  xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
+  xlab("Number of degrees below 32.5 C (Ambient)") + 
   ylab("Absolute number of degrees from 32.5 C (Brood)") + 
   geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0))
 dd
@@ -254,6 +264,7 @@ dd
 # Holding the temperature constant, does is night time associated
 # with bees not being able to keep brood temperature near 32.5
 #___________________________________________
+
 brooddta$brood_abs_dist_from_32 <- abs(brooddta$brood_dist_from_32) + 0.1 
 # the 0.1 makes the dataset have no zeros (requirement for gamma glm)
 brooddta$amb_abs_dist_from_32 <- abs(brooddta$amb_dist_from_32)
@@ -261,7 +272,31 @@ brooddta$amb_abs_dist_from_32 <- abs(brooddta$amb_dist_from_32)
 # get scaled amb_abs_dist_from_32, which will be used for modeling
 brooddta$scaled_amb_abs_dist_from_32 <- scale(brooddta$amb_abs_dist_from_32, center = TRUE, scale = TRUE)
 
-gm1 <- glmer(brood_abs_dist_from_32 ~ scaled_amb_abs_dist_from_32* treatment + dayTime   + (1|dayInt) + (1|colony), data = brooddta, family = Gamma(link = "log"))
+bsmall <- brooddta #sample_n(brooddta, 10000)
+head(bsmall)
+
+bsmall$dayInt <- as.factor(bsmall$dayInt)
+
+gm1 <- glmer(brood_abs_dist_from_32 ~ scaled_amb_abs_dist_from_32  + treatment + dayTime + scale(time3) +  
+               I((scale(time3))^2) +I(scale(time3)^3) + 
+               (1|dayInt) + (1|colony), data = bsmall, family = Gamma("sqrt"))
+
+
+# gm11 <- lm(brood_abs_dist_from_32 ~ time3 +  I((time3)^2) +I(time3^3),  data = bsmall)
+# summary(gm11)
+# plot(brood_abs_dist_from_32 ~  time3,  data = bsmall)
+# points(x = bsmall$time3, y = predict(gm11), col = 'red' )
+
+
+
+summary(gm1)
+
+plot(residuals(gm1, type = "pearson"), x = bsmall$time3)
+
+ndf <- data.frame(resds = residuals(gm1, type = 'pearson'), fitd = predict(gm1, type = 'response'))
+ggplot(ndf, aes(y = resds, x = fitd)) + 
+  geom_point() + 
+  geom_smooth()
 
 vif.mer <- function (fit) {
   ## adapted from rms::vif
@@ -284,25 +319,34 @@ vif.mer <- function (fit) {
 
 vif.mer(gm1) # doesn't seem too high, when there are no interactions
 
-summary(gm1)
-plot(gm1)
-
-
-preds <- predict(gm1, type = 'response', re.form=NA)
-predDF<- data.frame(x = brooddta$scaled_amb_abs_dist_from_32, y = preds, treatment = brooddta$treatment, colony = brooddta$colony, dayTime = brooddta$dayTime)
+bsmall$preds <- predict(gm1, type = 'response', re.form=NA)
+predDF<- data.frame(x = bsmall$scaled_amb_abs_dist_from_32, y = bsmall$preds, treatment = bsmall$treatment, colony = bsmall$colony, dayTime = bsmall$dayTime)
 predDF <- predDF[order(predDF$x, predDF$colony), ]
 
 centt <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:center")
 scle <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:scale")
 
 
-ee <- ggplot(brooddta, aes(x = abs(amb_dist_from_32), y = abs(brood_dist_from_32), color = treatment)) + 
+ee <- ggplot(sample_n(bsmall, 10000), aes(x = abs(amb_dist_from_32), y = brood_abs_dist_from_32, color = treatment)) + 
   geom_point(alpha = 0.02) + 
   scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
   xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
   ylab("Absolute number of degrees from 32.5 C (Brood)") + 
   geom_hline(aes(yintercept = 0)) + geom_vline(aes(xintercept = 0))
-ee +  geom_line(data = predDF, aes(x = (x * scle) + centt, y=y, linetype = dayTime), size = 1)
+ee
+
+ee + geom_line(aes(x = amb_abs_dist_from_32, y= preds, linetype = interaction(treatment, dayTime)))
+
+
+ee +  geom_smooth(aes(linetype =  dayTime, color = treatment), size = 1)
+
+# plot actual vs. predicted
+bsmall$preds1 <- predict(gm1, type = 'response')
+ggplot(bsmall, aes(x = time, y= preds1)) + 
+  facet_wrap(~colony + treatment) + 
+  geom_line(aes(y = brood_abs_dist_from_32), color = 'black') +  # black is actual
+  geom_line(alpha = 0.5, color = 'red') # red is predicted
+
 
 
 ## convert back to origin at (0,0)
