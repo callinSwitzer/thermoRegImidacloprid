@@ -10,35 +10,30 @@ library(lme4)
 library(tidyr)
 library(dplyr)
 library(lubridate)
-library(RSvgDevice)
 
 # set ggplot theme
-theme_set(theme_bw())
+theme_set(theme_classic())
 
-#Manually navigate to working directory
+#set working directory
 setwd("data")
 
-#Calculate therm performance 
-sp <- 32.5 # Define temperature set point
+# Define temperature set point
+sp <- 32.5 
 
+#___________________________________________
+# Load data from each cohort
 #___________________________________________
 # cohort 1
-#___________________________________________
 data <- read.csv('summaryDataC1.csv')
 treatList1 <- c('c', 't', 'c', 't', 't', 'c')
-# days <- unique(data$day) # shows how many days were included
 data$cohort = 1
 
-#___________________________________________
 # cohort #2
-#___________________________________________
 data2 <- read.csv('summaryDataC2.csv')
 treatList2 <- c('c', 't', 't', 't', 'c', 'c')
 data2$cohort = 2
 
-#___________________________________________
 # cohort #3
-#___________________________________________
 data3 <- read.csv('summaryDataC3.csv')
 treatList3 <- c('t', 'c', 'c', 'c', 't', 't')
 data3$cohort = 3
@@ -54,9 +49,12 @@ combData$time1 <- (combData$time) %% 1
 # add day
 combData$day = floor(combData$time)
 
-# Make the "time" variable into a datetime format -- dates are wrong
+# Make the "time" variable into a datetime format -- 
+# dates are all set 1970-01-01
 # 86400 = 24 * 60 * 60, which converts days to seconds
-combData$time2 <- format(as.POSIXct((combData$time1) * 86400, origin = "1970-01-01", tz = "UTC"), "%H:%M:%S")
+combData$time2 <- format(as.POSIXct((combData$time1) * 86400, 
+                                    origin = "1970-01-01", tz = "UTC"), 
+                         "%H:%M:%S")
 
 # time3 is the hour as a number, for example 14.5 is equal to 14:30
 combData$time3 <- as.numeric(substr(combData$time2, 1,2)) +
@@ -71,7 +69,9 @@ data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
 head(data_long)
 
 # the colony variable includes cohort_colony information
-data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2,2 ), sep = "_")
+data_long$colony = paste(data_long$cohort,  
+                         substr(data_long$condition,start = 2,2 ), 
+                         sep = "_")
 
 # location is either air or brood
 data_long$location = substr(data_long$condition,start = 3,1000 )
@@ -87,12 +87,14 @@ data_long$treatment <- mapvalues(data_long$colony,
                                           '3_4' , '3_5' , '3_6'), 
                                  to = c(treatList1, treatList2, treatList3))
 
-data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), to = c("control_grp", "treatment_grp"))
+data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), 
+                                 to = c("control_grp", "treatment_grp"))
 
 #___________________________________________
 # double check to make sure the hours seem right
 #___________________________________________
-ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = dayTime, y = temp)) +
+ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), 
+       aes(x = dayTime, y = temp)) +
   geom_boxplot()
 
 # visualize times vs. temps, to see if the times are aligned
@@ -104,9 +106,8 @@ ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000),
 
 
 #___________________________________________
-# Visualize some smooth options
+# Visualize a few different smoothing options
 #___________________________________________
-
 # generate a subsample of data to speed up visualization
 indxs2 <- sample(1:nrow(data_long), size  = 10000)
 
@@ -126,13 +127,11 @@ aa +
 
 # generalized additive model smooth
 aa + 
-  stat_smooth(method = "gam", formula = y ~ s(x), size = 1)
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 5), size = 1)
 
 # loess
 aa + 
   stat_smooth(method = "loess", size = 2)
-
-
 
 #___________________________________________
 # visualize brood temperature vs. 
@@ -142,79 +141,106 @@ aa +
 brooddta <- data_long[data_long$location == "brood", ]
 nrow(brooddta)
 
-# visualize brood temp, faceted by treatment, with hexbin plot
-ggplot(brooddta, aes(x = ambient, y = temp)) +
-  geom_hex() +
-  facet_grid(~treatment) +
-  geom_hline(aes(yintercept = sp), linetype = 2) +
-  scale_fill_viridis(option = "A", direction = -1) + 
-  stat_smooth(data = brooddta_sm, method = "loess", se= FALSE, color = 'black') + 
-  labs(x =  expression("Ambient Temperature " ( degree*C)), 
-       y = expression("Brood Temperature " ( degree*C))) + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.background = element_blank(),
-        panel.border = element_rect(colour = "black"))
+# # visualize brood temp, faceted by treatment, with hexbin plot
+# ggplot(brooddta, aes(x = ambient, y = temp)) +
+#   geom_hex() +
+#   facet_grid(~treatment) +
+#   geom_hline(aes(yintercept = sp), linetype = 2) +
+#   scale_fill_viridis(option = "A", direction = -1) + 
+#   stat_smooth(data = brooddta_sm, method = "loess", se= FALSE, color = 'black') + 
+#   labs(x =  expression("Ambient Temperature " ( degree*C)), 
+#        y = expression("Brood Temperature " ( degree*C))) + 
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         strip.background = element_blank(),
+#         panel.border = element_rect(colour = "black"))
 
-# visualize density on the same plot
-set.seed(123)
-brooddta_sm <- sample_n(brooddta, 10000, replace = FALSE)
+# # visualize density on the same plot
+# set.seed(123)
+# brooddta_sm <- sample_n(brooddta, 10000, replace = FALSE)
+# brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
+# 
+# # don't use ggsave(), because those pdf's aren't editable!
+# pdf("~/Desktop/gamSmooth3.pdf", width = 7, height = 5)
+# ggplot(brooddta_sm, aes(x = ambient, y = temp)) +
+#   geom_point(alpha = 0.2, aes(color = treatment), shape = 20, stroke = 0, size = 1) + 
+#   geom_hline(aes(yintercept = sp), linetype = 2) +
+#   scale_fill_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+#   scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+#   stat_smooth(method = "gam", formula = y ~ s(x, k = 4), data = brooddta, 
+#               se= FALSE, aes(color = treatment), size = 1) + 
+#   labs(x =  expression("Ambient Temperature " ( degree*C)), 
+#        y = expression("Brood Temperature " ( degree*C))) + 
+#   theme(panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         strip.background = element_blank(),
+#         panel.border = element_rect(colour = "black"))
+# dev.off()
+
+
+#___________________________________________
+# Model relationship between ambient temp and
+# brood temp, without transforming the response variable
+#___________________________________________
+
+
+library(gamm4)
+# make a new variable that represents "day" as an integer
+# the dayInt variable is unique among cohorts
+# cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
+brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
+
+brooddta_sm <- sample_n(brooddta, 2000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
+#g1 <- gamm4(temp ~ s(ambient, k = 10) + treatment +  + s(time1, k = 5), random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
 
-pdf("~/Desktop/gamSmooth3.pdf", width = 7, height = 5)
-ggplot(brooddta_sm, aes(x = ambient, y = temp)) +
-  geom_point(alpha = 0.2, aes(color = treatment), shape = 20, stroke = 0, size = 1) + 
-  geom_hline(aes(yintercept = sp), linetype = 2) +
-  scale_fill_viridis(option = "C", discrete = TRUE, end = 0.7)  +
-  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)  +
-  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), data = brooddta, 
-              se= FALSE, aes(color = treatment), size = 1) + 
-  labs(x =  expression("Ambient Temperature " ( degree*C)), 
-       y = expression("Brood Temperature " ( degree*C))) + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.background = element_blank(),
-        panel.border = element_rect(colour = "black"))
-dev.off()
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatment, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
+summary(g1$gam)
+summary(g1$mer)
 
-# save svg.
-devSVG("~/Desktop/gamSmooth2.svg", width = 7, height = 5)
-ggplot(brooddta_sm, aes(x = ambient, y = temp)) +
-  geom_point(alpha = 0.05, aes(color = treatment), shape = 20, stroke = 0, size = 1) + 
-  geom_hline(aes(yintercept = sp), linetype = 2) +
-  scale_fill_viridis(option = "C", discrete = TRUE, end = 0.7)  +
-  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)  +
-  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), data = brooddta, 
-              se= FALSE, aes(color = treatment), size = 1) + 
-  labs(x =  "Ambient Temperature (C)", 
-       y = "Brood Temperature (C)") + 
-  theme(panel.grid.major = element_blank(),
-        panel.grid.minor = element_blank(),
-        strip.background = element_blank(),
-        panel.border = element_rect(colour = "black"))
-dev.off()
+par(mfrow = c(2,3))
+plot(g1$gam, all.terms = TRUE, rug = FALSE, residuals = TRUE, cex = 10)
+plot(g1$mer)
 
 
-stat_smooth(method = "lm", formula = y ~ poly(x, 3), size = 1)
+# residuals are spread a little wide.
+mean(residuals(g1$mer) > 2 | residuals(g1$mer) < -2)
+
+
+# plot actual vs. predicted
+brooddta_sm$preds1 <-  predict(g1$mer, type = 'response')
+ggplot(brooddta_sm, aes(x = time, y= preds1)) + 
+  facet_wrap(~colony + treatment) + 
+  geom_line(aes(y = temp), color = 'black') +  # black is actual
+  geom_line(alpha = 0.5, color = 'red') # red is predicted
+
+
+## Overall, model is not too bad, and we didn't have to transform the y-variable
+
+
+# plot raw data, and prediction, while holding time constant
+nd <- brooddta_sm
+nd$time1 = 0.7
+
+brooddta_sm$preds1 <-  predict(g1$gam, newdata = nd, type = 'response', re.form = NA)
+#brooddta_sm$preds1 <-  predict(g1$mer, type = 'response', re.form = NA)
+
+ggplot(brooddta_sm, 
+       aes(x = ambient, y= temp, color = treatment)) + 
+  geom_point(alpha = 0.1) + 
+  geom_line(aes(y = preds1)) + facet_wrap(~treatment)
+
+
+#________________________________________________________________
+### end of gamm4
+#________________________________________________________________
 
 
 
-ggsave("~/Desktop/gamSmooth.pdf", aa, width = 7, height = 5)
-
-
-
-
-
-brooddta <- sample_n(brooddta, 1000)
-
-# make a new variable that represents "day" as an integer
-brooddta$dayInt <- as.factor(as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100)
-
-brooddta$time3
 
 # log-transformed model
-expMod <- lmer( temp ~ log(ambient) * treatment + scale(time3) + I(scale(time3)^2) + I(scale(time3)^3) + dayTime +  (1|colony) + (1|dayInt), data = brooddta)
+expMod <- lmer(temp ~ log(ambient) * treatment + scale(time3) + I(scale(time3)^2) + I(scale(time3)^3) + dayTime +  (1|colony) + (1|dayInt), data = brooddta)
 
 expMod <- lmer( temp ~ log(ambient, base = 40) + treatment +  (1|colony) + (1|dayInt), data = brooddta)
 
