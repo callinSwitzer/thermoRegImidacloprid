@@ -10,6 +10,7 @@ library(lme4)
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(RSvgDevice)
 
 # set ggplot theme
 theme_set(theme_bw())
@@ -24,17 +25,8 @@ sp <- 32.5 # Define temperature set point
 # cohort 1
 #___________________________________________
 data <- read.csv('summaryDataC1.csv')
-#Adjust time to count from 6 in the morning
 treatList1 <- c('c', 't', 'c', 't', 't', 'c')
-data$day <- floor(data$time)
 # days <- unique(data$day) # shows how many days were included
-data$hour <- data$time - data$day
-#Calculate rounded brood temperature
-int <- 0.5
-data$ambientRnd <- round((data$ambient/int))*int
-daytimeRange <- c(0, 16/24) 
-#Slightly tricky here - this is now isolating the hours from 6 am to 8 pm, 
-# but adjusted relatively to new timing (with 0 being 6 am on day one)
 data$cohort = 1
 
 #___________________________________________
@@ -42,12 +34,6 @@ data$cohort = 1
 #___________________________________________
 data2 <- read.csv('summaryDataC2.csv')
 treatList2 <- c('c', 't', 't', 't', 'c', 'c')
-#Adjust time to count from 6 in the morning
-# data2$time <- data2$time + 6/24
-data2$day <- floor(data2$time)
-data2$hour <- data2$time - data2$day
-#Calculate rounded brood temperature
-data2$ambientRnd <- round((data2$ambient/int))*int
 data2$cohort = 2
 
 #___________________________________________
@@ -55,12 +41,6 @@ data2$cohort = 2
 #___________________________________________
 data3 <- read.csv('summaryDataC3.csv')
 treatList3 <- c('t', 'c', 'c', 'c', 't', 't')
-#Adjust time to count from 6 in the morning
-# data3$time <- data3$time + 6/24
-data3$day <- floor(data3$time)
-data3$hour <- data3$time - data3$day
-#Calculate rounded brood temperature
-data3$ambientRnd <- round((data3$ambient/int))*int
 data3$cohort = 3
 
 #___________________________________________
@@ -71,24 +51,18 @@ combData <- rbind(data, data2, data3)
 # converts time to a proportion of a day (0 is midnight, 0.5 is noon)
 combData$time1 <- (combData$time) %% 1
 
+# add day
+combData$day = floor(combData$time)
+
 # Make the "time" variable into a datetime format -- dates are wrong
+# 86400 = 24 * 60 * 60, which converts days to seconds
 combData$time2 <- format(as.POSIXct((combData$time1) * 86400, origin = "1970-01-01", tz = "UTC"), "%H:%M:%S")
 
-# time3 is the hour as a number 
+# time3 is the hour as a number, for example 14.5 is equal to 14:30
 combData$time3 <- as.numeric(substr(combData$time2, 1,2)) +
   as.numeric(substr(combData$time2, 4,5))/60 + 
   as.numeric(substr(combData$time2, 7,8)) / 60 / 60
-
-head(combData)
   
-  
-# # plot a subsample of the data -- just to check it out
-# indxs <- seq(from = 1, to = nrow(combData), length.out = 1000)
-# 
-# ggplot(combData[indxs, ], aes(y = c1air, x = time2, color = as.factor(cohort))) + 
-#   geom_line() + 
-#   facet_wrap(~cohort, scales = 'free_x')
-
 #___________________________________________
 # convert combined dataset to long format
 # and add some extra variables
@@ -96,7 +70,7 @@ head(combData)
 data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
 head(data_long)
 
-# the colony variable now includes cohort_colony information
+# the colony variable includes cohort_colony information
 data_long$colony = paste(data_long$cohort,  substr(data_long$condition,start = 2,2 ), sep = "_")
 
 # location is either air or brood
@@ -123,20 +97,11 @@ ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = 
 
 # visualize times vs. temps, to see if the times are aligned
 ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), 
-       aes(x = time %% 1, y = temp, color = as.factor(cohort))) +
+       aes(x = time3, y = temp, color = as.factor(cohort))) +
   geom_point() + 
   geom_smooth(aes(group = cohort)) + 
-  labs(x = "original temp scale")
+  labs(x = "Hour of the day", y = 'air temp')
 
-# ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time1, y = temp, group = cohort)) +
-#   geom_point()  + 
-#   geom_smooth(aes(color = cohort)) + 
-#   labs(x = "new temp scale -- hottest around noon") 
-
-ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000), aes(x = time3, y = temp, color = cohort)) +
-  geom_point() + 
-  labs(x = 'new temp scale, hours of the day') +   
-  geom_smooth(aes(group = cohort)) 
 
 #___________________________________________
 # Visualize some smooth options
@@ -168,28 +133,96 @@ aa +
   stat_smooth(method = "loess", size = 2)
 
 
+
 #___________________________________________
 # visualize brood temperature vs. 
 # ambient temperature
 #___________________________________________
 # new dataset that includes only brood temp (not air)
 brooddta <- data_long[data_long$location == "brood", ]
-
-# make a new variable that represents "day" as an integer
-brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
+nrow(brooddta)
 
 # visualize brood temp, faceted by treatment, with hexbin plot
-# ggplot(brooddta, aes(x = ambient, y = temp, color = treatment)) + 
-#   geom_hex() + 
-#   facet_wrap(~treatment) + 
-#   geom_hline(aes(yintercept = sp)) + 
-#   scale_fill_viridis(option = "A")
+ggplot(brooddta, aes(x = ambient, y = temp)) +
+  geom_hex() +
+  facet_grid(~treatment) +
+  geom_hline(aes(yintercept = sp), linetype = 2) +
+  scale_fill_viridis(option = "A", direction = -1) + 
+  stat_smooth(data = brooddta_sm, method = "loess", se= FALSE, color = 'black') + 
+  labs(x =  expression("Ambient Temperature " ( degree*C)), 
+       y = expression("Brood Temperature " ( degree*C))) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        panel.border = element_rect(colour = "black"))
 
-# create a subsample of brood data for visualization and fast modeling
-#brooddta <- brooddta[sample(1:nrow(brooddta), size = 30000), ]
+# visualize density on the same plot
+set.seed(123)
+brooddta_sm <- sample_n(brooddta, 10000, replace = FALSE)
+brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
+
+
+pdf("~/Desktop/gamSmooth3.pdf", width = 7, height = 5)
+ggplot(brooddta_sm, aes(x = ambient, y = temp)) +
+  geom_point(alpha = 0.2, aes(color = treatment), shape = 20, stroke = 0, size = 1) + 
+  geom_hline(aes(yintercept = sp), linetype = 2) +
+  scale_fill_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), data = brooddta, 
+              se= FALSE, aes(color = treatment), size = 1) + 
+  labs(x =  expression("Ambient Temperature " ( degree*C)), 
+       y = expression("Brood Temperature " ( degree*C))) + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        panel.border = element_rect(colour = "black"))
+dev.off()
+
+# save svg.
+devSVG("~/Desktop/gamSmooth2.svg", width = 7, height = 5)
+ggplot(brooddta_sm, aes(x = ambient, y = temp)) +
+  geom_point(alpha = 0.05, aes(color = treatment), shape = 20, stroke = 0, size = 1) + 
+  geom_hline(aes(yintercept = sp), linetype = 2) +
+  scale_fill_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+  scale_color_viridis(option = "C", discrete = TRUE, end = 0.7)  +
+  stat_smooth(method = "gam", formula = y ~ s(x, k = 4), data = brooddta, 
+              se= FALSE, aes(color = treatment), size = 1) + 
+  labs(x =  "Ambient Temperature (C)", 
+       y = "Brood Temperature (C)") + 
+  theme(panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        panel.border = element_rect(colour = "black"))
+dev.off()
+
+
+stat_smooth(method = "lm", formula = y ~ poly(x, 3), size = 1)
+
+
+
+ggsave("~/Desktop/gamSmooth.pdf", aa, width = 7, height = 5)
+
+
+
+
+
+brooddta <- sample_n(brooddta, 1000)
+
+# make a new variable that represents "day" as an integer
+brooddta$dayInt <- as.factor(as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100)
+
+brooddta$time3
 
 # log-transformed model
-expMod <- lmer(temp ~ log(ambient) * treatment *dayTime+  (1|colony) + (1|dayInt), data = brooddta)
+expMod <- lmer( temp ~ log(ambient) * treatment + scale(time3) + I(scale(time3)^2) + I(scale(time3)^3) + dayTime +  (1|colony) + (1|dayInt), data = brooddta)
+
+expMod <- lmer( temp ~ log(ambient, base = 40) + treatment +  (1|colony) + (1|dayInt), data = brooddta)
+
+expMod <- lmer( temp ~ log(ambient) + I(log(ambient)^2) + I(log(ambient)^3) + treatment +  (1|colony) + (1|dayInt), data = brooddta)
+
+
+car::vif(lm(temp ~ ambient) + treatment + scale(time3) + I(scale(time3)^2) + I(scale(time3)^3),data = brooddta))
+
 summary(expMod)
 plot(expMod) # somewhat troubling -- residuals are very high, and fan shaped
 
@@ -206,7 +239,7 @@ brooddta$expModPreds <- predict(expMod, re.form = NA)
 # note: re.form means ignore random effects, and predict an overall average
 
 bbb <- ggplot(brooddta,  aes(x = ambient, y = temp, color = treatment)) + 
-  geom_point(alpha = 0.01) + 
+  geom_point(alpha = 0.1) + 
   scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
   xlab("Temp (Ambient)") + 
   ylab("Temp (Brood)") + 
@@ -278,7 +311,7 @@ head(bsmall)
 bsmall$dayInt <- as.factor(bsmall$dayInt)
 
 gm1 <- glmer(brood_abs_dist_from_32 ~ scaled_amb_abs_dist_from_32  + treatment + dayTime + scale(time3) +  
-               I((scale(time3))^2) +I(scale(time3)^3) + 
+               I((scale(time3))^2) + I(scale(time3)^3) + 
                (1|dayInt) + (1|colony), data = bsmall, family = Gamma("sqrt"))
 
 
@@ -327,7 +360,7 @@ centt <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:center")
 scle <- attr(brooddta$scaled_amb_abs_dist_from_32, which = "scaled:scale")
 
 
-ee <- ggplot(sample_n(bsmall, 10000), aes(x = abs(amb_dist_from_32), y = brood_abs_dist_from_32, color = treatment)) + 
+ee <- ggplot(bsmall, aes(x = abs(amb_dist_from_32), y = brood_abs_dist_from_32, color = treatment)) + 
   geom_point(alpha = 0.02) + 
   scale_color_viridis(option = "C", discrete = TRUE, end = 0.7) + 
   xlab("Absolute number of degrees from 32.5 C (Ambient)") + 
