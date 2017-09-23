@@ -190,17 +190,21 @@ library(gamm4)
 # cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
 brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
-brooddta_sm <- sample_n(brooddta, 2000, replace = FALSE)
+
+# 20K points is about the max I can do in a reasonable time.
+brooddta_sm <- sample_n(brooddta, 5000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
 #g1 <- gamm4(temp ~ s(ambient, k = 10) + treatment +  + s(time1, k = 5), random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
 
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatment, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment + 0, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
+
+
 summary(g1$gam)
 summary(g1$mer)
 
-par(mfrow = c(2,3))
-plot(g1$gam, all.terms = TRUE, rug = FALSE, residuals = TRUE, cex = 10)
+par(mfrow = c(2,2))
+plot(g1$gam, all.terms = TRUE, rug = FALSE)
 plot(g1$mer)
 
 
@@ -221,7 +225,10 @@ ggplot(brooddta_sm, aes(x = time, y= preds1)) +
 
 # plot raw data, and prediction, while holding time constant
 nd <- brooddta_sm
-nd$time1 = 0.7
+nd$time1 = 0
+nd$ambient <- mean(nd$ambient)
+
+tapply(brooddta_sm$temp, INDEX = brooddta_sm$treatment, mean)
 
 brooddta_sm$preds1 <-  predict(g1$gam, newdata = nd, type = 'response', re.form = NA)
 #brooddta_sm$preds1 <-  predict(g1$mer, type = 'response', re.form = NA)
@@ -231,12 +238,20 @@ ggplot(brooddta_sm,
   geom_point(alpha = 0.1) + 
   geom_line(aes(y = preds1)) + facet_wrap(~treatment)
 
+unique(brooddta_sm$preds1)
+
 
 #________________________________________________________________
 ### end of gamm4
 #________________________________________________________________
 
 
+
+# confidence bands
+
+ggplot(brooddta_sm, aes(x = time, y = temp)) + 
+         geom_point(aes(color = treatment)) + 
+  facet_wrap(~cohort)
 
 
 # log-transformed model
