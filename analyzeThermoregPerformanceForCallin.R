@@ -247,12 +247,20 @@ unique(brooddta_sm$preds1)
 
 
 
+<<<<<<< HEAD
 # confidence bands, on a daily level
 
 ggplot(sample_n(brooddta, 50000), aes(x = time3, y = temp)) + 
   geom_point(aes(color = treatment), alpha = 0.01) + 
   facet_grid(cohort~.) + 
   stat_smooth(aes(color = treatment), method = "gam", formula = y ~ s(x ,k = 5))
+=======
+# confidence bands
+
+ggplot(brooddta_sm, aes(x = time, y = temp)) + 
+         geom_point(aes(color = treatment)) + 
+  facet_wrap(~cohort)
+>>>>>>> e5a741daac030242160e432299cc787b41824126
 
 
 # log-transformed model
