@@ -155,7 +155,7 @@ dataIncDec <- lapply(unique(brooddta$cohort), function(ii){
   
   ambTime <- timeSeries(foo$ambient)
   
-  foo$ss <- as.data.frame(smoothSpline(ambTime,spar = 0.3))$spline
+  foo$ss <- as.data.frame(smoothSpline(ambTime, spar = 0.3))$spline
   
   
   foo$tempDer <- c(NA, diff(foo$ss)) # add NA to the beginning, since diff reduces size by 1
@@ -242,29 +242,33 @@ broodsm <- broodsm[!is.na(broodsm$tempIncrease), ]
 
 # 20K points is about the max I can do in a reasonable time.
 set.seed(456)
-brooddta_sm <- sample_n(broodsm, 5000, replace = FALSE)
+brooddta_sm <- sample_n(broodsm, 10000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
 # make this into a factor
 brooddta_sm$tempIncrease <- as.factor(brooddta_sm$tempIncrease)
 #g1 <- gamm4(temp ~ s(ambient, k = 10) + treatment +  + s(time1, k = 5), random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
 
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
 
-deviance(g1$mer)
+# looking at different models
+# g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+# 
+# deviance(g1$mer)
+# 
+# g2 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment + tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+# 
+# deviance(g2$mer)
+# 
+# 
+# anova(g2$mer, g1$mer)
+# 
+# 
+# g3 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease + cohort, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+# summary(g3$mer)
+# 
+# anova(g1$mer, g3$mer) # drop cohort
 
-g2 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment + tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
-
-deviance(g2$mer)
-
-
-anova(g2$mer, g1$mer)
-
-
-g3 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease + cohort, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
-summary(g3$mer)
-
-anova(g1$mer, g3$mer) # drop cohort
+summary(brooddta_sm$tempIncrease)
 
 
 g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
@@ -305,8 +309,6 @@ ggplot(brooddta_sm,
        aes(x = ambient, y= temp, color = treatment)) + 
   geom_point(alpha = 0.1) + 
   geom_line(aes(y = preds1)) + facet_wrap(~treatment)
-
-unique(brooddta_sm$preds1)
 
 
 # could calculate out of sample accuracy to show significance....just an idea.
