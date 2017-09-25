@@ -10,6 +10,7 @@ library(lme4)
 library(tidyr)
 library(dplyr)
 library(lubridate)
+library(timeSeries)
 
 # set ggplot theme
 theme_set(theme_classic())
@@ -141,6 +142,50 @@ aa +
 brooddta <- data_long[data_long$location == "brood", ]
 nrow(brooddta)
 
+
+# create a variable for temp rising or falling
+# smooth ambient temperature
+set.seed(123)
+sm <- sample_n(brooddta, 100000)
+sm <- sm[order(sm$cohort, sm$time), ]
+
+dataIncDec <- lapply(unique(brooddta$cohort), function(ii){
+  foo <- sm[sm$cohort == ii, ]
+  plot(foo$ambient, x=foo$time)
+  
+  ambTime <- timeSeries(foo$ambient)
+  
+  foo$ss <- as.data.frame(smoothSpline(ambTime,spar = 0.3))$spline
+  
+  
+  foo$tempDer <- c(NA, diff(foo$ss)) # add NA to the beginning, since diff reduces size by 1
+  foo$tempIncrease <- ifelse(foo$tempDer >= 0, yes = "Increasing", no = "Decreasing")
+  lines(x = foo$time, y = foo$ss, col = 'green')
+  
+  return(foo)
+})
+
+
+# ggplot(foo, aes(x = time, y = ambient, color = tempIncrease)) + 
+#   geom_point(size = 0.1) + 
+#   geom_line(aes(y = ss), color = 'black', alpha = 0.5) + 
+#   scale_color_viridis(discrete = TRUE)
+
+
+# merge back into dataframe
+df3 <- rbind.fill(dataIncDec)
+
+broodsm <- merge(sm, df3)
+
+head(broodsm)
+
+ggplot(broodsm, aes(x = time, y = ambient, color = tempIncrease)) + 
+  geom_point(size = 0.1) + 
+  facet_grid(cohort~., labeller = labeller(.rows = label_both, .cols = label_both)) + 
+  scale_color_viridis(discrete = TRUE)
+
+
+
 # # visualize brood temp, faceted by treatment, with hexbin plot
 # ggplot(brooddta, aes(x = ambient, y = temp)) +
 #   geom_hex() +
@@ -188,25 +233,48 @@ library(gamm4)
 # make a new variable that represents "day" as an integer
 # the dayInt variable is unique among cohorts
 # cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
-brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
+broodsm$dayInt <- as.numeric(broodsm$day) + as.numeric(broodsm$cohort) * 100
+
+# drop NA's -- there will be three from the numerical derivative above
+broodsm <- broodsm[!is.na(broodsm$tempIncrease), ]
+
 
 
 # 20K points is about the max I can do in a reasonable time.
-brooddta_sm <- sample_n(brooddta, 5000, replace = FALSE)
+set.seed(456)
+brooddta_sm <- sample_n(broodsm, 5000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
+# make this into a factor
+brooddta_sm$tempIncrease <- as.factor(brooddta_sm$tempIncrease)
 #g1 <- gamm4(temp ~ s(ambient, k = 10) + treatment +  + s(time1, k = 5), random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
 
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment + 0, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm)
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+
+deviance(g1$mer)
+
+g2 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment + tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+
+deviance(g2$mer)
 
 
+anova(g2$mer, g1$mer)
+
+
+g3 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease + cohort, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+summary(g3$mer)
+
+anova(g1$mer, g3$mer) # drop cohort
+
+
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 summary(g1$gam)
 summary(g1$mer)
 
-par(mfrow = c(2,2))
+
+par(mfrow = c(2,3))
 plot(g1$gam, all.terms = TRUE, rug = FALSE)
 plot(g1$mer)
-
 
 # residuals are spread a little wide.
 mean(residuals(g1$mer) > 2 | residuals(g1$mer) < -2)
@@ -220,13 +288,13 @@ ggplot(brooddta_sm, aes(x = time, y= preds1)) +
   geom_line(alpha = 0.5, color = 'red') # red is predicted
 
 
-## Overall, model is not too bad, and we didn't have to transform the y-variable
+## Overall, model is not obtimal,but we didn't have to transform the y-variable
 
 
 # plot raw data, and prediction, while holding time constant
 nd <- brooddta_sm
-nd$time1 = 0
-nd$ambient <- mean(nd$ambient)
+#nd$time1 = 0
+#nd$ambient <- mean(nd$ambient)
 
 tapply(brooddta_sm$temp, INDEX = brooddta_sm$treatment, mean)
 
@@ -241,26 +309,21 @@ ggplot(brooddta_sm,
 unique(brooddta_sm$preds1)
 
 
+# could calculate out of sample accuracy to show significance....just an idea.
+
 #________________________________________________________________
 ### end of gamm4
 #________________________________________________________________
 
 
-
-<<<<<<< HEAD
 # confidence bands, on a daily level
 
 ggplot(sample_n(brooddta, 50000), aes(x = time3, y = temp)) + 
   geom_point(aes(color = treatment), alpha = 0.01) + 
   facet_grid(cohort~.) + 
   stat_smooth(aes(color = treatment), method = "gam", formula = y ~ s(x ,k = 5))
-=======
-# confidence bands
 
-ggplot(brooddta_sm, aes(x = time, y = temp)) + 
-         geom_point(aes(color = treatment)) + 
-  facet_wrap(~cohort)
->>>>>>> e5a741daac030242160e432299cc787b41824126
+
 
 
 # log-transformed model
