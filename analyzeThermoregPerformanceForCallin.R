@@ -3,14 +3,16 @@
 # Looking over James' code for analysis of thermoregulation data
 
 
-library(ggplot2)
-library(plyr)
-library(viridis)
-library(lme4)
-library(tidyr)
-library(dplyr)
-library(lubridate)
-library(timeSeries)
+
+ipak <- function(pkg){
+  new.pkg <- pkg[!(pkg %in% installed.packages()[, "Package"])]
+  if(length(new.pkg)) install.packages(new.pkg, dependencies = TRUE)
+  sapply(pkg, require, character.only = TRUE)
+}
+packages <- c("ggplot2", "plyr", "viridis", "lme4", "tidyr", 
+              "dplyr", "lubridate", "signal", "zoo")
+ipak(packages)
+
 
 # set ggplot theme
 theme_set(theme_classic())
@@ -29,6 +31,7 @@ data <- read.csv('summaryDataC1.csv')
 treatList1 <- c('c', 't', 'c', 't', 't', 'c')
 data$cohort = 1
 
+
 # cohort #2
 data2 <- read.csv('summaryDataC2.csv')
 treatList2 <- c('c', 't', 't', 't', 'c', 'c')
@@ -43,6 +46,7 @@ data3$cohort = 3
 # combine cohorts
 #___________________________________________
 combData <- rbind(data, data2, data3)
+
 
 # converts time to a proportion of a day (0 is midnight, 0.5 is noon)
 combData$time1 <- (combData$time) %% 1
@@ -61,13 +65,90 @@ combData$time2 <- format(as.POSIXct((combData$time1) * 86400,
 combData$time3 <- as.numeric(substr(combData$time2, 1,2)) +
   as.numeric(substr(combData$time2, 4,5))/60 + 
   as.numeric(substr(combData$time2, 7,8)) / 60 / 60
+
+#___________________________________________________________
+# smooth ambient temperature and calculate increasing vs.
+# decreasing
+#___________________________________________________________
+
+# create a variable for temp rising or falling
+# smooth ambient temperature
+
+
+
+
+
+dataIncDec <- lapply(unique(combData$cohort), function(ii){
+  foo <- combData[combData$cohort == ii, ]
+  
+  plot(foo$ambient, x=foo$time, pch = ".")
+  
+  #xyspline <- smooth.spline(x = foo$time, y = foo$ambient, spar = 0.3)
+  xyspline <- loess(foo$ambient ~ foo$time, span = 1/max(foo$day) * .5)
+  lines(y = predict(xyspline), x = foo$time, col = 'green')
+
+  # rmn <- rollmean(foo$ambient, k = 321, fill = NA, align = "center")
+  # lines(y = rmn, x = foo$time, col = 'pink', lwd = 5)
+  foo$rollMeanAmbient <- rmn <- rollapply(foo$ambient, width = 482, FUN = mean, align = "center", partial = TRUE)
+  lines(y = rmn, x = foo$time, col = 'orange', lwd = 1)
+  
+  bf <- butter(6, 0.003, type = 'low')
+  ## apply the filter to a signal
+  z <- filtfilt(bf, foo$ambient) # apply filter
+  lines(foo$time, z, col = "red")
+  legend("topright", legend = c("loess", "lowpass butterworth filter", 
+                                'rolling mean'), lty = 1, 
+         col = c('green', 'red', 'orange'))
+  
+  dpts <- 1 : 5000
+  
+  # what is 321 points?
+  print (mean(sapply(1:100, function(jj){
+    foo$time3[jj + 482] - foo$time3[jj]})))
+
+  
+  
+  
+  plot(foo$ambient[dpts ], x=foo$time[dpts], pch = ".")
+  lines(y = predict(xyspline)[dpts ], x = foo$time[dpts ], col = 'green')
+  lines(y = rmn[dpts ], x = foo$time[dpts ], col = 'orange')
+  lines(foo$time[dpts ], z[dpts ], col = "red")
+  legend("topright", legend = c("loess", "lowpass butterworth filter", 
+                                'rolling mean'), lty = 1, 
+         col = c('green', 'red', 'orange'))
+  
+  foo$tempDer <- c(NA, diff(rmn)) # add NA to the beginning, since diff reduces size by 1
+  foo$tempIncrease <- ifelse(foo$tempDer >= 0, yes = "Increasing", no = "Decreasing")
+  
+  foo$tempIncrease_noSM <- c(NA, diff(foo$ambient))
+  foo$tempIncrease_noSmooth <- ifelse(foo$tempIncrease_noSM >= 0, yes = "Increasing", no = "Decreasing")
+  
+  return(foo)
+})
+
+
+
+
+# merge back into dataframe
+df3 <- rbind.fill(dataIncDec)
+
+combData <- merge(combData, df3, all.x = TRUE)
+
+head(combData)
+
+ggplot(combData, aes(x = time, y = ambient)) + 
+  geom_line(size = 0.1) + 
+  geom_point(aes(y = rollMeanAmbient, color = tempIncrease), size = 0.01, alpha = 0.1) + 
+  facet_grid(cohort~., labeller = labeller(.rows = label_both, .cols = label_both)) + 
+  scale_color_viridis(discrete = TRUE,begin = 0.4, end = 1) + 
+  theme(legend.position = "none")
   
 #___________________________________________
 # convert combined dataset to long format
 # and add some extra variables
 #___________________________________________
 data_long <- gather(combData, condition, temp, c1brood:c6air, factor_key=TRUE)
-head(data_long)
+
 
 # the colony variable includes cohort_colony information
 data_long$colony = paste(data_long$cohort,  
@@ -91,6 +172,13 @@ data_long$treatment <- mapvalues(data_long$colony,
 data_long$treatment <- mapvalues(data_long$treatment, from = c("c", "t"), 
                                  to = c("control_grp", "treatment_grp"))
 
+
+#drop NA's -- 36 is from 18 colonies and air/brood measurements in each colony
+sum(is.na(data_long$tempIncrease)) 
+
+data_long <- data_long[!is.na(data_long$tempIncrease), ]
+
+
 #___________________________________________
 # double check to make sure the hours seem right
 #___________________________________________
@@ -110,7 +198,7 @@ ggplot(sample_n(data_long[data_long$location == 'air', ], size = 1000),
 # Visualize a few different smoothing options
 #___________________________________________
 # generate a subsample of data to speed up visualization
-indxs2 <- sample(1:nrow(data_long), size  = 10000)
+indxs2 <- sample(1:nrow(data_long), size  = 10000, replace = FALSE)
 
 aa <- ggplot(data_long[indxs2, ], aes(x = ambient, y = temp, color = treatment)) + 
   geom_point(alpha = 0.2) + 
@@ -140,51 +228,6 @@ aa +
 #___________________________________________
 # new dataset that includes only brood temp (not air)
 brooddta <- data_long[data_long$location == "brood", ]
-nrow(brooddta)
-
-
-# create a variable for temp rising or falling
-# smooth ambient temperature
-set.seed(123)
-sm <- sample_n(brooddta, 100000)
-sm <- sm[order(sm$cohort, sm$time), ]
-
-dataIncDec <- lapply(unique(brooddta$cohort), function(ii){
-  foo <- sm[sm$cohort == ii, ]
-  plot(foo$ambient, x=foo$time)
-  
-  ambTime <- timeSeries(foo$ambient)
-  
-  foo$ss <- as.data.frame(smoothSpline(ambTime, spar = 0.3))$spline
-  
-  
-  foo$tempDer <- c(NA, diff(foo$ss)) # add NA to the beginning, since diff reduces size by 1
-  foo$tempIncrease <- ifelse(foo$tempDer >= 0, yes = "Increasing", no = "Decreasing")
-  lines(x = foo$time, y = foo$ss, col = 'green')
-  
-  return(foo)
-})
-
-
-# ggplot(foo, aes(x = time, y = ambient, color = tempIncrease)) + 
-#   geom_point(size = 0.1) + 
-#   geom_line(aes(y = ss), color = 'black', alpha = 0.5) + 
-#   scale_color_viridis(discrete = TRUE)
-
-
-# merge back into dataframe
-df3 <- rbind.fill(dataIncDec)
-
-broodsm <- merge(sm, df3)
-
-head(broodsm)
-
-ggplot(broodsm, aes(x = time, y = ambient, color = tempIncrease)) + 
-  geom_point(size = 0.1) + 
-  facet_grid(cohort~., labeller = labeller(.rows = label_both, .cols = label_both)) + 
-  scale_color_viridis(discrete = TRUE)
-
-
 
 # # visualize brood temp, faceted by treatment, with hexbin plot
 # ggplot(brooddta, aes(x = ambient, y = temp)) +
@@ -233,16 +276,13 @@ library(gamm4)
 # make a new variable that represents "day" as an integer
 # the dayInt variable is unique among cohorts
 # cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
-broodsm$dayInt <- as.numeric(broodsm$day) + as.numeric(broodsm$cohort) * 100
-
-# drop NA's -- there will be three from the numerical derivative above
-broodsm <- broodsm[!is.na(broodsm$tempIncrease), ]
+brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
 
 
 # 20K points is about the max I can do in a reasonable time.
 set.seed(456)
-brooddta_sm <- sample_n(broodsm, 10000, replace = FALSE)
+brooddta_sm <- sample_n(brooddta, 20000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
 # make this into a factor
@@ -270,6 +310,12 @@ brooddta_sm$tempIncrease <- as.factor(brooddta_sm$tempIncrease)
 
 summary(brooddta_sm$tempIncrease)
 
+
+
+brooddta_sm$tempIncrease_noSmooth <- as.factor(brooddta_sm$tempIncrease_noSmooth)
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease_noSmooth, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+summary(g1$gam)
+summary(g1$mer)
 
 g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 summary(g1$gam)
