@@ -10,7 +10,7 @@ ipak <- function(pkg){
   sapply(pkg, require, character.only = TRUE)
 }
 packages <- c("ggplot2", "plyr", "viridis", "lme4", "tidyr", 
-              "dplyr", "lubridate", "signal", "zoo")
+              "dplyr", "lubridate", "signal", "zoo", "effects")
 ipak(packages)
 
 
@@ -73,10 +73,6 @@ combData$time3 <- as.numeric(substr(combData$time2, 1,2)) +
 
 # create a variable for temp rising or falling
 # smooth ambient temperature
-
-
-
-
 
 dataIncDec <- lapply(unique(combData$cohort), function(ii){
   foo <- combData[combData$cohort == ii, ]
@@ -282,7 +278,7 @@ brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
 # 20K points is about the max I can do in a reasonable time.
 set.seed(456)
-brooddta_sm <- sample_n(brooddta, 20000, replace = FALSE)
+brooddta_sm <- sample_n(brooddta, 5000, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
 # make this into a factor
@@ -313,17 +309,22 @@ summary(brooddta_sm$tempIncrease)
 
 
 brooddta_sm$tempIncrease_noSmooth <- as.factor(brooddta_sm$tempIncrease_noSmooth)
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease_noSmooth, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+# g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease_noSmooth, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+# summary(g1$gam)
+# summary(g1$mer)
+
+brooddta_sm$treatTempIncrInt <- interaction(brooddta_sm$treatment, brooddta_sm$tempIncrease)
+
+g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 summary(g1$gam)
 summary(g1$mer)
 
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, k = 5) + treatment * tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+
+# par(mfrow = c(2,3))
+aab <- plot(g1$gam, all.terms = TRUE, rug = FALSE)
 summary(g1$gam)
-summary(g1$mer)
 
 
-par(mfrow = c(2,3))
-plot(g1$gam, all.terms = TRUE, rug = FALSE)
 plot(g1$mer)
 
 # residuals are spread a little wide.
@@ -332,32 +333,94 @@ mean(residuals(g1$mer) > 2 | residuals(g1$mer) < -2)
 
 # plot actual vs. predicted
 brooddta_sm$preds1 <-  predict(g1$mer, type = 'response')
+brooddta_sm$preds <-  predict(g1$mer, type = 'response', re.form = NA)
 ggplot(brooddta_sm, aes(x = time, y= preds1)) + 
   facet_wrap(~colony + treatment) + 
-  geom_line(aes(y = temp), color = 'black') +  # black is actual
-  geom_line(alpha = 0.5, color = 'red') # red is predicted
-
+ geom_line(aes(y = temp), color = 'black') +  # black is actual
+ geom_line(alpha = 0.5, color = 'red')  + # red is predicted
+  geom_line(alpha = 0.5,aes(y = preds),  color = 'green') # green is predictions without random effects
+  
 
 ## Overall, model is not obtimal,but we didn't have to transform the y-variable
 
+# visualize differences
 
 # plot raw data, and prediction, while holding time constant
-nd <- brooddta_sm
-#nd$time1 = 0
-#nd$ambient <- mean(nd$ambient)
+nd <- brooddta_sm[, c("ambient", "treatment", "time1", "tempIncrease", "treatTempIncrInt")]
+nd$time1 = 0
+nd$ambient <- mean(nd$ambient)
+
+nd <- nd[!(duplicated(nd)), ]
+nd
+
+
+
+# n2 <- nd
+# n2$time1 <- 0.25
+# n3 <- nd
+# n3$time1 <- 0.5
+# n4 <- nd
+# n4$time1 <- 0.75
+# 
+# nd <- rbind(nd, n2, n3, n4)
+
 
 tapply(brooddta_sm$temp, INDEX = brooddta_sm$treatment, mean)
 
-brooddta_sm$preds1 <-  predict(g1$gam, newdata = nd, type = 'response', re.form = NA)
+nd$preds1 <-  predict(g1$gam, newdata = nd2, type = 'response', re.form = NA)
+
+nd$se1 <- predict(g1$gam, newdata = nd, type = 'response', re.form = NA, se = TRUE)$se
 #brooddta_sm$preds1 <-  predict(g1$mer, type = 'response', re.form = NA)
 
-ggplot(brooddta_sm, 
-       aes(x = ambient, y= temp, color = treatment)) + 
-  geom_point(alpha = 0.1) + 
-  geom_line(aes(y = preds1)) + facet_wrap(~treatment)
+ggplot(nd, aes(x = tempIncrease,  y= preds1, color = as.factor(time1))) + 
+  facet_wrap(~treatment) +
+  geom_point(aes(y = preds1), position = position_dodge(width =0.2)) + 
+  geom_errorbar(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), width = 0.05, position = position_dodge(width = 0.2))
+
+g2 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatment*tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+summary(g2$gam)
+summary(g2$mer)
+
+nd <- brooddta_sm[, c("ambient", "treatment", "time1", "tempIncrease")]
+nd$time1 = 0
+nd$ambient <-15
+nd <- nd[!(duplicated(nd)), ]
+nd$preds1 <-  predict(g2$gam, newdata = nd, type = 'response', re.form = NA)
+nd$se1 <- predict(g2$gam, newdata = nd, type = 'response', re.form = NA, se = TRUE)$se
+
+nd2 <- expand.grid(ambient = c(10, 20 , 30), treatment = levels(nd$treatment), 
+                   time1 = seq(0,1, length.out = 10), 
+                   tempIncrease = levels(nd$tempIncrease))
+
+nd2$preds1 <-  predict(g2$gam, newdata = nd2, type = 'response', re.form = NA)
+nd2$se1 <- predict(g2$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
+#brooddta_sm$preds1 <-  predict(g1$mer, type = 'response', re.form = NA)
+
+ggplot(nd2, aes(x = time1,  y= preds1, color = tempIncrease)) + 
+  facet_grid(ambient~treatment, labeller = labeller(.rows = label_both, .cols = label_both)) +
+  geom_point(aes(y = preds1), position = position_dodge(width =0.03)) + 
+  geom_errorbar(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), width = 0.05, position = position_dodge(width = 0.02))+ 
+  scale_color_viridis(discrete = TRUE, option = "C", end = 0.7) 
+
+ggplot(nd, aes(x = tempIncrease,  y= preds1, color = as.factor(treatment))) + 
+  facet_wrap(~treatment) +
+  geom_point(aes(y = preds1), position = position_dodge(width =0.2)) + 
+  geom_errorbar(aes(ymin = preds1 - se1, ymax = preds1 + se1), width = 0.05, position = position_dodge(width = 0.2)) + 
+  theme(legend.position = "none") + 
+  scale_color_viridis(discrete = TRUE, option = "C", end = 0.7) + 
+  ggtitle(paste("ambient temp = ", nd$ambient, "time= ", nd$time1))
+
+# effect plot
+m1 <- lmer(ambient ~ tempIncrease*treatment + (1|colony), data = brooddta_sm)
 
 
-# could calculate out of sample accuracy to show significance....just an idea.
+par(mfrow=c(2,3), cex=1.1)
+
+plot(g1$gam, scale=0, 
+     shade=TRUE, rug=FALSE, bty='n', all.terms = TRUE)
+
+
+
 
 #________________________________________________________________
 ### end of gamm4
@@ -543,7 +606,7 @@ ggplot(bsmall, aes(x = time, y= preds1)) +
 
 
 
-## convert back to origin at (0,0)
+
 
 
 
