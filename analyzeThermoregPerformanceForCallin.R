@@ -315,12 +315,23 @@ brooddta_sm$tempIncrease_noSmooth <- as.factor(brooddta_sm$tempIncrease_noSmooth
 
 brooddta_sm$treatTempIncrInt <- interaction(brooddta_sm$treatment, brooddta_sm$tempIncrease)
 
-g1 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+g12 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+
+ipak("MuMIn")
+AICc(g12$mer)
+AIC(g12$mer)
+
+
+g1 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 10) + s(time1, by = treatTempIncrInt, k = 10) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+AIC(g1$mer)
+AICc(g1$mer)
+
 summary(g1$gam)
 summary(g1$mer)
 
 
-# par(mfrow = c(2,3))
+
+par(mfrow = c(3,4))
 aab <- plot(g1$gam, all.terms = TRUE, rug = FALSE)
 summary(g1$gam)
 
@@ -347,30 +358,41 @@ ggplot(brooddta_sm, aes(x = time, y= preds1)) +
 
 # plot raw data, and prediction, while holding time constant
 nd <- brooddta_sm[, c("ambient", "treatment", "time1", "tempIncrease", "treatTempIncrInt")]
-nd$time1 = 0
+nd$time1 = 0.5
 nd$ambient <- mean(nd$ambient)
 
 nd <- nd[!(duplicated(nd)), ]
 nd
 
+nd2 <- expand.grid(ambient = c( 10, 20 , 30), 
+                   treatTempIncrInt = levels(interaction(levels(nd$treatment), levels(nd$tempIncrease))), 
+                   time1 = seq(0,1, length.out = 30))
+
+nd2$preds1 <-  predict(g1$gam, newdata = nd2, type = 'response', re.form = NA)
+nd2$se1 <- predict(g1$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
+
+ggplot(nd2, aes(x = time1,  y= preds1, color = as.factor(ambient))) + 
+  geom_ribbon(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), alpha = 0.4, color = NA) +
+  facet_grid(ambient~treatTempIncrInt, labeller = labeller(.rows = label_both, .cols = label_value)) +
+  geom_line(aes(y = preds1)) + 
+  #geom_errorbar(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), width = 0.05, position = position_dodge(width = 0.02))+ 
+  scale_color_viridis(discrete = TRUE, option = "C", end = 0.7, name = "Ambient\nTemp (C)") +
+  labs(x = "Time of day (0=midnight, 0.5 = noon)", y="Predicted brood temperature (C)")
 
 
-# n2 <- nd
-# n2$time1 <- 0.25
-# n3 <- nd
-# n3$time1 <- 0.5
-# n4 <- nd
-# n4$time1 <- 0.75
-# 
-# nd <- rbind(nd, n2, n3, n4)
+
+ggplot(sample_n(brooddta, 50000, replace = FALSE), aes(x = ambient,  y= temp, color = interaction( treatment))) + 
+  facet_grid( ~ tempIncrease, labeller = labeller(.rows = label_both, .cols = label_both)) +
+  geom_point(aes(y = temp), alpha = 0.05) + 
+  geom_smooth(method = "gam", formula = y ~ s(x, k = 5), se = FALSE) + 
+  scale_color_viridis(discrete = TRUE, option = "C", end = 0.7, name = "Treatment group") +
+  labs(x = "ambient temp (C)", y="Brood temperature (C)")
 
 
 tapply(brooddta_sm$temp, INDEX = brooddta_sm$treatment, mean)
 
-nd$preds1 <-  predict(g1$gam, newdata = nd2, type = 'response', re.form = NA)
+nd$preds1 <-  predict(g1$gam, newdata = nd, type = 'response', re.form = NA)
 
-nd$se1 <- predict(g1$gam, newdata = nd, type = 'response', re.form = NA, se = TRUE)$se
-#brooddta_sm$preds1 <-  predict(g1$mer, type = 'response', re.form = NA)
 
 ggplot(nd, aes(x = tempIncrease,  y= preds1, color = as.factor(time1))) + 
   facet_wrap(~treatment) +
