@@ -318,13 +318,13 @@ brooddta_sm$treatTempIncrInt <- interaction(brooddta_sm$treatment, brooddta_sm$t
 g12 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 
 ipak("MuMIn")
-AICc(g12$mer)
+AICc(g12$mer) # note: REML must be FALSE to get an accurate AIC for comparison
 AIC(g12$mer)
 
 
 g1 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 10) + s(time1, by = treatTempIncrInt, k = 10) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 AIC(g1$mer)
-AICc(g1$mer)
+AICc(g1$mer) # difference between AIC and AICc is negligible when sample size is large
 
 summary(g1$gam)
 summary(g1$mer)
