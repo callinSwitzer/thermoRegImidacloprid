@@ -14,8 +14,6 @@ packages <- c("ggplot2", "plyr", "viridis", "lme4", "tidyr",
 ipak(packages)
 
 
-# set ggplot theme
-theme_set(theme_classic())
 
 #set working directory
 setwd("data")
