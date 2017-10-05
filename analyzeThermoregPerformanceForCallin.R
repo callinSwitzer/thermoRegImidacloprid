@@ -204,8 +204,6 @@ actualDiff <- diff(tapply(mdf$broodTemp, mdf$treatment, mean))
 # p-value for randomization test for Brood Temp
 mean(perms < actualDiff | perms > - actualDiff) # ~0.00491
 
-
-# here
 #___________________________________________
 # Model relationship between ambient temp and
 # brood temp, without transforming the response variable
