@@ -1,0 +1,25 @@
+---
+title: "SuppTables_AccuteImidacloprid"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## R Markdown
+% table for counts of quitting bees
+$$\begin{table}
+\centering
+\caption*{Table S12. Counts of foragers that ceased foraging for each imidacloprid treatment group} 
+\begin{tabular}{rrrr}
+  \hline
+ & 0 ng & 0.1 ng & 1 ng \\ 
+  \hline
+Number of foragers that ceased foraging after treatment &   8 &   7 &  12 \\ 
+  Total number of foragers before treatment &  33 &  34 &  33 \\ 
+   \hline
+\end{tabular}
+\end{table}$$
