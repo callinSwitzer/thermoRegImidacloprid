@@ -1,7 +1,7 @@
 ---
 title: "Thermoregulation Analysis"
 author: "Callin Switzer"
-date: "5 Oct 2017"
+date: "10 Oct 2017"
 output:
   html_document: default
   html: default
@@ -14,8 +14,9 @@ knitr::opts_chunk$set(echo = TRUE)
 # setup
 ```{R}
 # Callin Switzer
-# 5 Oct 2017
 # Looking over James' code for analysis of thermoregulation data
+
+print(paste("Last update:", Sys.time()))
 
 
 ipak <- function(pkg){
@@ -25,7 +26,7 @@ ipak <- function(pkg){
 }
 packages <- c("ggplot2", "plyr", "viridis", "lme4", "tidyr", 
               "dplyr", "lubridate", "signal", "zoo", "effects", 
-              "gamm4", "MuMIn")
+              "gamm4", "MuMIn", "stargazer", "broom", "plyr")
 ipak(packages)
 
 
@@ -40,6 +41,12 @@ dir.create(file.path(getwd(), "/figures"), showWarnings = FALSE)
 
 # remove figures in folder (so that I don't get a backlog of old files)
 do.call(file.remove, list(list.files('figures', full.names = TRUE)))
+
+
+# make a dataTables directory, if it doesn't exist
+dir.create(file.path(getwd(), "/dataTables"), showWarnings = FALSE)
+do.call(file.remove, list(list.files('dataTables', full.names = TRUE)))
+
 
 # Define temperature set point
 sp <- 32.5 
@@ -160,7 +167,6 @@ dev.off()
 
 # Convert data to long format
 ```{R}
- 
 #___________________________________________
 # convert combined dataset to long format
 # and add some extra variables
@@ -252,6 +258,36 @@ mean(perms < actualDiff | perms > - actualDiff) # ~0.00491
 ```
 
 
+# Estimate VIF
+```{R}
+vif.mer <- function (fit) {
+  ## adapted from rms::vif
+  
+  v <- vcov(fit)
+  nam <- names(fixef(fit))
+  
+  ## exclude intercepts
+  ns <- sum(1 * (nam == "Intercept" | nam == "(Intercept)"))
+  if (ns > 0) {
+    v <- v[-(1:ns), -(1:ns), drop = FALSE]
+    nam <- nam[-(1:ns)]
+  }
+  
+  d <- diag(v)^0.5
+  v <- diag(solve(v/(d %o% d)))
+  names(v) <- nam
+  v
+}
+
+set.seed(17444)
+brooddta_sm <- sample_n(brooddta, 10000, replace = FALSE)
+brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
+
+gm1 <- lmer(temp ~ ambient + treatment +time1 +  tempIncrease +  (1|colony) + (1|day), data = brooddta_sm, REML = FALSE)
+
+vif.mer(gm1) # doesn't seem too high, when there are no interactions
+```
+
 
 # Conduct more complex analysis and visualization (using a subset of the data)
 # GAMM4 -- Generalized Additive Mixed effects Models
@@ -265,9 +301,11 @@ mean(perms < actualDiff | perms > - actualDiff) # ~0.00491
 # cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
 brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
+numSamps <- 20000
+
 # 10K points is about the max I can do in a reasonable time.
 set.seed(17444)
-brooddta_sm <- sample_n(brooddta, 10000, replace = FALSE)
+brooddta_sm <- sample_n(brooddta, numSamps, replace = FALSE)
 brooddta_sm$treatment <- relevel(as.factor(brooddta_sm$treatment), ref = "control_grp")
 
 # make this into a factor
@@ -276,38 +314,42 @@ brooddta_sm$tempIncrease <- as.factor(brooddta_sm$tempIncrease)
 # make interaction into a single factor
 brooddta_sm$treatTempIncrInt <- interaction(brooddta_sm$treatment, brooddta_sm$tempIncrease)
 
-g01 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = brooddta_sm, REML = FALSE)
+g00 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatment + tempIncrease, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
 
 # use AIC to compare models
 # note: REML must be FALSE to get an accurate AIC for comparison
 # note: difference between AIC and AICc is negligible when sample size is large
-AICc(g01$mer) 
+AICc(g00$mer) 
 
 
-g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = brooddta_sm, REML = FALSE)
-AICc(g02$mer) # this AICc is lower than above
+g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+AICc(g02$mer) # this AICc is higher than above
+
+
+g03 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+AICc(g03$mer) # this AICc is higher than above
 
 # refit with REML=TRUE
-g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = brooddta_sm, REML = TRUE)
+g01 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 
 
 pdf("figures/smoothplot.pdf", width = 15, height = 15)
 par(mfrow = c(3,4))
-aab <- plot(g02$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
-summary(g02$gam) # Summary for paper -- brood
-summary(g02$mer)
+aab <- plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+summary(g01$gam) # Summary for paper -- brood
+summary(g01$mer)
 dev.off()
 
 
-plot(g02$mer)
+plot(g01$mer)
 
 # residuals are spread a little wide.
-mean(residuals(g02$mer) > 2 | residuals(g02$mer) < -2)
+mean(residuals(g01$mer) > 2 | residuals(g01$mer) < -2)
 
 
 # plot actual vs. predicted
-brooddta_sm$preds1 <-  predict(g02$mer, type = 'response')
-brooddta_sm$preds <-  predict(g02$mer, type = 'response', re.form = NA)
+brooddta_sm$preds1 <-  predict(g01$mer, type = 'response')
+brooddta_sm$preds <-  predict(g01$mer, type = 'response', re.form = NA)
 ggplot(brooddta_sm, aes(x = time, y= preds1)) + 
   facet_wrap(~colony + treatment) + 
  geom_line(aes(y = temp), color = 'black') +  # black is actual
@@ -328,16 +370,18 @@ nd <- nd[!(duplicated(nd)), ]
 nd
 
 nd2 <- expand.grid(ambient = c( 10, 20 , 30), 
-                   treatTempIncrInt = levels(interaction(levels(nd$treatment), levels(nd$tempIncrease))), 
-                   time1 = seq(0,1, length.out = 30))
+                   time1 = seq(0,1, length.out = 30), 
+                   treatment = levels(nd$treatment), 
+                  
+                   treatTempIncrInt = levels(nd$treatTempIncrInt))
 
-nd2$preds1 <-  predict(g02$gam, newdata = nd2, type = 'response', re.form = NA)
-nd2$se1 <- predict(g02$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
+nd2$preds1 <-  predict(g01$gam, newdata = nd2, type = 'response', re.form = NA)
+nd2$se1 <- predict(g01$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
 
 pdf('figures/facetedPrededSmooths.pdf', width = 10, height = 6)
 ggplot(nd2, aes(x = time1,  y= preds1, color = as.factor(ambient))) + 
   geom_ribbon(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), alpha = 0.4, color = NA) +
-  facet_grid(ambient~treatTempIncrInt, labeller = labeller(.rows = label_both, .cols = label_value)) +
+  facet_grid(ambient~  treatTempIncrInt , labeller = labeller(.rows = label_both, .cols = label_value)) +
   geom_line(aes(y = preds1)) + 
   #geom_errorbar(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), width = 0.05, position = position_dodge(width = 0.02))+ 
   scale_color_viridis(discrete = TRUE, option = "C", end = 0.7, name = "Ambient\nTemp (C)") +
@@ -362,12 +406,32 @@ dev.off()
 
 ```
 
+# Output Brood temp tables to HTML for paper
+```{r, results='asis'}
+# output table to html for paper
+s1 <- summary(g01$mer)
+# variance for random effects, including smooths
+stargazer(as.data.frame(VarCorr(g01$mer), type = 'html'))
+write.csv(file = "dataTables/VarRandEffectsBrood.csv", as.data.frame(VarCorr(g01$mer)))
+# parametric effects
+stargazer(s1$coefficients, type = 'html')
+
+s = summary(g01$gam)
+# parametric
+stargazer(s$p.table, type = "html")
+write.csv(file = "dataTables/parametricBrood.csv", as.data.frame(tidy(s$p.table)))
+
+# smooth terms
+stargazer(s$s.table, type = 'html')
+write.csv(file = "dataTables/smoothBrood.csv", as.data.frame(tidy(s$s.table)))
+
+```
+
 
 
 
 # GAMM for air temp vs. ambient temp
 ```{R, cache = TRUE}
-
 #___________________________________________
 # Model relationship between ambient temp and
 # AIR temp, 
@@ -379,7 +443,7 @@ airdta$dayInt <- as.numeric(airdta$day) + as.numeric(airdta$cohort) * 100
 
 # 10K points is about the max I can do in a reasonable time.
 set.seed(17444)
-airdta_sm <- sample_n(airdta, 10000, replace = FALSE)
+airdta_sm <- sample_n(airdta, numSamps, replace = FALSE)
 airdta_sm$treatment <- relevel(as.factor(airdta_sm$treatment), ref = "control_grp")
 
 # make this into a factor
@@ -388,38 +452,41 @@ airdta_sm$tempIncrease <- as.factor(airdta_sm$tempIncrease)
 # make interaction into a single factor
 airdta_sm$treatTempIncrInt <- interaction(airdta_sm$treatment, airdta_sm$tempIncrease)
 
-g01 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = airdta_sm, REML = FALSE)
+g00 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = FALSE)
 
 # use AIC to compare models
 # note: REML must be FALSE to get an accurate AIC for comparison
 # note: difference between AIC and AICc is negligible when sample size is large
-AICc(g01$mer) 
+AICc(g00$mer) 
 
 
-g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = airdta_sm, REML = FALSE)
-AICc(g02$mer) # this AICc is lower than above
+g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = FALSE)
+AICc(g02$mer) # this AICc is HIGHER than above
+
+g03 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + tempIncrease + treatment, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = FALSE)
+AICc(g03$mer) # this is lowest
 
 # refit with REML=TRUE
-g02 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|day), data = airdta_sm, REML = TRUE)
+g01 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + tempIncrease + treatment, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = TRUE)
 
 
 pdf("figures/smoothplot_air.pdf", width = 15, height = 15)
 par(mfrow = c(3,4))
-aab <- plot(g02$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
-summary(g02$gam) # Summary for paper -- air temp
-summary(g02$mer)
+aab <- plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+summary(g01$gam) # Summary for paper -- air temp
+summary(g01$mer)
 dev.off()
 
 
-plot(g02$mer)
+plot(g01$mer)
 
 # residuals are fine and dandy here!
-mean(residuals(g02$mer) > 2 | residuals(g02$mer) < -2)
+mean(residuals(g01$mer) > 2 | residuals(g01$mer) < -2)
 
 
 # plot actual vs. predicted
-airdta_sm$preds1 <-  predict(g02$mer, type = 'response')
-airdta_sm$preds <-  predict(g02$mer, type = 'response', re.form = NA)
+airdta_sm$preds1 <-  predict(g01$mer, type = 'response')
+airdta_sm$preds <-  predict(g01$mer, type = 'response', re.form = NA)
 ggplot(airdta_sm, aes(x = time, y= preds1)) + 
   facet_wrap(~colony + treatment) + 
   geom_line(aes(y = temp), color = 'black') +  # black is actual
@@ -440,10 +507,12 @@ nd
 
 nd2 <- expand.grid(ambient = c( 10, 20 , 30), 
                    treatTempIncrInt = levels(interaction(levels(nd$treatment), levels(nd$tempIncrease))), 
-                   time1 = seq(0,1, length.out = 30))
+                   time1 = seq(0,1, length.out = 30), 
+                   treatment = levels(nd$treatment), 
+                   tempIncrease = levels(nd$tempIncrease))
 
-nd2$preds1 <-  predict(g02$gam, newdata = nd2, type = 'response', re.form = NA)
-nd2$se1 <- predict(g02$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
+nd2$preds1 <-  predict(g01$gam, newdata = nd2, type = 'response', re.form = NA)
+nd2$se1 <- predict(g01$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
 
 pdf('figures/facetedPrededSmooths_Air.pdf', width = 10, height = 6)
 ggplot(nd2, aes(x = time1,  y= preds1, color = as.factor(ambient))) + 
@@ -493,3 +562,37 @@ s7
 dev.off()
 
 ```
+
+# Output HTML tables for air temp
+
+```{r, results='asis'}
+s1 <- summary(g02$mer)
+# variance for random effects, including smooths
+stargazer(as.data.frame(VarCorr(g02$mer), type = 'html'))
+write.csv(file = "dataTables/VarRandEffectsAir.csv", as.data.frame(VarCorr(g02$mer)))
+# parametric effects
+stargazer(s1$coefficients, type = 'html')
+
+s = summary(g02$gam)
+# parametric
+stargazer(s$p.table, type = "html")
+write.csv(file = "dataTables/parametricAir.csv", as.data.frame(tidy(s$p.table)))
+
+# smooth terms
+stargazer(s$s.table, type = 'html')
+write.csv(file = "dataTables/smoothAir.csv", as.data.frame(tidy(s$s.table)))
+
+```
+
+# combine csv files into one
+```{r}
+list_of_data <- lapply(dir("dataTables"), FUN = function(x) {
+  tmp = read.csv(paste("dataTables", x, sep = "/"), header = FALSE)
+                                        tmp$name = x
+                                        return(tmp)
+                                        })
+all_data = do.call(rbind.fill, list_of_data)
+
+write.csv(x = all_data, file = paste("dataTables", "combined_tables.csv", sep = "/"))
+```
+
