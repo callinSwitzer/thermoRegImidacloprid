@@ -40,12 +40,12 @@ setwd("/Users/cswitzer/Documents/GitRepos/thermoRegImidacloprid")
 dir.create(file.path(getwd(), "/figures"), showWarnings = FALSE)
 
 # remove figures in folder (so that I don't get a backlog of old files)
-do.call(file.remove, list(list.files('figures', full.names = TRUE)))
+#do.call(file.remove, list(list.files('figures', full.names = TRUE)))
 
 
 # make a dataTables directory, if it doesn't exist
 dir.create(file.path(getwd(), "/dataTables"), showWarnings = FALSE)
-do.call(file.remove, list(list.files('dataTables', full.names = TRUE)))
+#do.call(file.remove, list(list.files('dataTables', full.names = TRUE)))
 
 
 # Define temperature set point
@@ -336,7 +336,7 @@ vif.mer(gm1) # doesn't seem too high, when there are no interactions
 # cohort 1 starts with day 100, cohort 2 with 200, and 3 with 300
 brooddta$dayInt <- as.numeric(brooddta$day) + as.numeric(brooddta$cohort) * 100
 
-numSamps <- 200
+numSamps <- 20000
 
 # 20K points is about the max I can do in a reasonable time.
 set.seed(17444)
@@ -364,16 +364,59 @@ AICc(g02$mer) # this AICc is lowest
 g03 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
 AICc(g03$mer) # this AICc is higher than above
 
+system.time({
+  g04 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + treatTempIncrInt + as.factor(cohort), random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = FALSE)
+})
+AICc(g04$mer) # higher with cohort
+
 # refit with REML=TRUE
-g01 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
+g01 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt , random = ~ (1|colony) + (1|dayInt), data = brooddta_sm, REML = TRUE)
 
 
-pdf("figures/smoothplot.pdf", width = 15, height = 15)
+pdf("figures/smoothplot_brood.pdf", width = 15, height = 15)
 par(mfrow = c(3,4))
 aab <- plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
 summary(g01$gam) # Summary for paper -- brood
 summary(g01$mer)
 dev.off()
+
+
+# plot for html, and for paper
+par(mfrow = c(3,4))
+plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+{pdf("figures/smoothplot_brood_labels.pdf", width = 14, height = 14)
+par(mfrow = c(3,4))
+par(mai= c(0.6,1,0.3,0))
+
+plot.gam(select = 1, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 2, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 3, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 4, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp decreasing, (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 5, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 6, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 7, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 8, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+par(mai= c(1.5,1,0.3,0))
+
+plot.gam(select = 9, xlabs = "", ylabs = "Partial residuals for brood temp (°C)", g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE, xaxt = "n")
+axis(1, labels = FALSE)
+labs <- gsub(x = levels(brooddta_sm$treatTempIncrInt), pattern = "_grp.", replacement = " ")
+labs = gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2", labs, perl=TRUE) # capitalize
+text(cex=1, x=1:4 - 0.75, y=-3.4, labs, xpd=TRUE, srt=15)
+text(cex=1, x=3 - 0.75, y=-3.8, "Treatment group and temp direction", xpd=TRUE, srt=0)
+
+
+dev.off()
+}
 
 
 plot(g01$mer)
@@ -407,14 +450,10 @@ nd
 nd2 <- expand.grid(ambient = c(10, 20 , 30), 
                    time1 = seq(0,1, length.out = 30), 
                    treatment = levels(nd$treatment), 
-                  
                    treatTempIncrInt = levels(nd$treatTempIncrInt))
 
 nd2$preds1 <-  predict(g01$gam, newdata = nd2, type = 'response', re.form = NA)
 nd2$se1 <- predict(g01$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
-
-
-
 
 
 # this shows roughly where the parametric estimates come from
@@ -510,8 +549,20 @@ AICc(g02$mer) # lowest
 g03 <- gamm4(temp ~ s(ambient, by = treatment, k = 5) + s(time1, by = treatment, k = 5) + tempIncrease + treatment, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = FALSE)
 AICc(g03$mer) # 
 
-# refit with REML=TRUE
-g01 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt, random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = TRUE)
+system.time({
+g04 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + s(time1, by = treatTempIncrInt, k = 5) + treatTempIncrInt + as.factor(cohort), random = ~ (1|colony) + (1|dayInt), data = airdta_sm, REML = FALSE)
+})
+AICc(g04$mer) # lower with cohort
+
+
+system.time({
+  # refit with REML=TRUE
+  g01 <- gamm4(temp ~ s(ambient, by = treatTempIncrInt, k = 5) + 
+                 s(time1, by = treatTempIncrInt, k = 5) + 
+                 treatTempIncrInt + as.factor(cohort), random = ~ (1|colony) + (1|dayInt), 
+               data = airdta_sm, REML = TRUE)
+})
+
 
 
 pdf("figures/smoothplot_air.pdf", width = 15, height = 15)
@@ -520,6 +571,46 @@ aab <- plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
 summary(g01$gam) # Summary for paper -- air temp
 summary(g01$mer)
 dev.off()
+
+
+# plot for html, and for paper
+par(mfrow = c(3,4))
+plot(g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+{pdf("figures/smoothplot_air_labels.pdf", width = 14, height = 14)
+par(mfrow = c(3,4))
+par(mai= c(0.6,1,0.3,0))
+
+plot.gam(select = 1, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for air temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 2, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for air temp, \nTreatment group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 3, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for air temp, \nControl group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 4, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for air temp, \nTreatment group, Temp decreasing, (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 5, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for air temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 6, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for air temp, \nTreatment group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 7, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for air temp, \nControl group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+plot.gam(select = 8, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for air temp, \nTreatment group, Temp increasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+par(mai= c(1.5,1,0.3,0))
+
+plot.gam(select = 9, xlabs = "", ylabs = "Partial residuals for air temp (°C)", g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE, xaxt = "n")
+axis(1, labels = FALSE)
+labs <- gsub(x = levels(brooddta_sm$treatTempIncrInt), pattern = "_grp.", replacement = " ")
+labs = gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2", labs, perl=TRUE) # capitalize
+text(cex=1, x=1:4 - 0.75, y=-2.4, labs, xpd=TRUE, srt=15)
+text(cex=1, x=3 - 0.75, y=-2.8, "Treatment group and temp direction", xpd=TRUE, srt=0)
+
+par(las = 1)
+plot.gam(select = 10, xlabs = "Cohort", ylabs = "Partial residuals for air temp (°C)", g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+
+dev.off()
+}
 
 
 plot(g01$mer)
@@ -553,7 +644,8 @@ nd2 <- expand.grid(ambient = c( 10, 20 , 30),
                    treatTempIncrInt = levels(interaction(levels(nd$treatment), levels(nd$tempIncrease))), 
                    time1 = seq(0,1, length.out = 30), 
                    treatment = levels(nd$treatment), 
-                   tempIncrease = levels(nd$tempIncrease))
+                   tempIncrease = levels(nd$tempIncrease), 
+                   cohort = unique(airdta_sm$cohort))
 
 nd2$preds1 <-  predict(g01$gam, newdata = nd2, type = 'response', re.form = NA)
 nd2$se1 <- predict(g01$gam, newdata = nd2, type = 'response', re.form = NA, se = TRUE)$se
@@ -565,7 +657,7 @@ ggplot(nd2, aes(x = time1,  y= preds1, color = as.factor(ambient))) +
   geom_line(aes(y = preds1)) + 
   #geom_errorbar(aes(ymin = preds1 - 1.96*se1, ymax = preds1 + 1.96*se1), width = 0.05, position = position_dodge(width = 0.02))+ 
   scale_color_viridis(discrete = TRUE, option = "C", end = 0.7, name = "Ambient\nTemp (°C)") +
-  labs(x = "Time of day (0=midnight, 0.5 = noon)", y="Predicted brood temperature (C)")
+  labs(x = "Time of day (0=midnight, 0.5 = noon)", y="Predicted air temperature (C)")
 dev.off()
 
 
