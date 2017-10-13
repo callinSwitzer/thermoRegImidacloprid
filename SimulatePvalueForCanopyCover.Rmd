@@ -1,0 +1,50 @@
+---
+title: "Canopy Cover Analysis"
+author: "Callin Switzer"
+date: "10 Oct 2017"
+output:
+  html_document: default
+  html: default
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+print(paste("Last update:", Sys.time(), Sys.timezone()))
+
+
+# perm test
+
+set.seed(393494)
+
+waxy = data.frame(treatment = rep(c("treated", "control"), each = 9), 
+              canopy = c(0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1))
+
+waxy
+
+# add one to canopy, treated, so that estimated p-value is not 0
+# waxy <- rbind(waxy, c("treated", 1))
+# waxy$canopy <- as.numeric(waxy$canopy)
+
+# treated proportion = control proportion
+ActDiff <- diff(tapply(waxy$canopy, waxy$treatment, mean))
+
+perFunc <- function(treatment, canopy){
+  t2 <- sample(treatment, replace = FALSE)
+  diff(tapply(canopy, t2, mean))
+}
+
+
+perms <- sapply(1:100000, function(i) perFunc(waxy$treatment, waxy$canopy))
+hist(perms)
+pval = mean(perms <= ActDiff | perms >= -ActDiff, na.rm = TRUE)
+pval
+
+
+# proportion test, though it could be incorrects, since one proportion is 0
+prop.test(table(waxy))
+
+
+# not sure how this is simulated, but it agrees with the permutation test
+chisq.test(table(waxy), simulate.p.value = TRUE)
+```

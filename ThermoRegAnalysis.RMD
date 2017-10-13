@@ -255,7 +255,7 @@ bootSamps <- sapply(1:100000, function(i) bootFunc(mdf$treatment, mdf$airTemp))
 actualDiff <- diff(tapply(mdf$airTemp, mdf$treatment, mean))
 
 # p-value for randomization test for airTemp
-pval = mean(perms < actualDiff | perms > - actualDiff) # ~0.00822
+pval = mean(perms <= actualDiff | perms >= - actualDiff) # ~0.00822
 c(actualDiff, quantile(as.numeric(bootSamps), probs = c(0.025, 0.975), na.rm = TRUE), Air_pval = pval)
 write.csv(x = t(c(actualDiff, quantile(as.numeric(bootSamps), probs = c(0.025, 0.975), na.rm = TRUE), 
                 Air_pval = pval)), file = "dataTables/AirPermTest.csv")
@@ -267,7 +267,7 @@ perms <- sapply(1:100000, FUN = function(i) permFunc(mdf$treatment, mdf$broodTem
 actualDiff <- diff(tapply(mdf$broodTemp, mdf$treatment, mean))
 
 # p-value for randomization test for airTemp
-pval = mean(perms < actualDiff | perms > - actualDiff) # ~0.00491
+pval = mean(perms <= actualDiff | perms >= - actualDiff) # ~0.00491
 c(actualDiff, quantile(as.numeric(bootSamps), probs = c(0.025, 0.975), na.rm = TRUE), Brood_pval = pval)
 write.csv(x = t(c(actualDiff, quantile(as.numeric(bootSamps), probs = c(0.025, 0.975), na.rm = TRUE), 
                 Brood_pval = pval)), file = "dataTables/BroodPermTest.csv")
