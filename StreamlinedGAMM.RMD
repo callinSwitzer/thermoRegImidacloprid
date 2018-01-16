@@ -354,8 +354,8 @@ plot.gam(select = 9, xlabs = "", ylabs = "Partial residuals\nfor brood temp (°C
 axis(1, labels = FALSE)
 labs <- gsub(x = levels(brooddta_sm$treatTempIncrInt), pattern = "_grp.", replacement = " ")
 labs = gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2", labs, perl=TRUE) # capitalize
-text(cex=1, x=1:4 - 1.5, y=-6.0, labs, xpd=TRUE, srt=45)
-text(cex=1, x=3 - 0.75, y=-8.8, "Treatment group\nand temp direction", xpd=TRUE, srt=0)
+text(cex=1, x=1:4 - 1.5, y=-5.0, labs, xpd=TRUE, srt=45)
+text(cex=1, x=3 - 0.75, y=-7.8, "Treatment group\nand temp direction", xpd=TRUE, srt=0)
 
 
 dev.off()
@@ -552,8 +552,8 @@ plot.gam(select = 9, xlabs = "", ylabs = "Partial residuals\nfor air temp (°C)"
 axis(1, labels = FALSE)
 labs <- gsub(x = levels(brooddta_sm$treatTempIncrInt), pattern = "_grp.", replacement = " ")
 labs = gsub("(^|[[:space:]])([[:alpha:]])", "\\1\\U\\2", labs, perl=TRUE) # capitalize
-text(cex=1, x=1:4 - 1.5, y=-4.0, labs, xpd=TRUE, srt=45)
-text(cex=1, x=3 - 0.75, y=-5.8, "Treatment group\nand temp direction", xpd=TRUE, srt=0)
+text(cex=1, x=1:4 - 1.5, y=-3.4, labs, xpd=TRUE, srt=45)
+text(cex=1, x=3 - 0.75, y=-4.8, "Treatment group\nand temp direction", xpd=TRUE, srt=0)
 
 par(las = 1)
 plot.gam(select = 10, xlabs = "Cohort", ylabs = "Partial residuals\nfor air temp (°C)", g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
