@@ -340,7 +340,7 @@ plot.gam(select = 3, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for b
 
 plot.gam(select = 4, xlab = "Ambient Temp (°C)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp decreasing, (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
 
-plot.gam(select = 5, xlab = "Time of day (0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
+plot.gam(select = 5, xlab = "Time of day\n(0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nControl group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
 
 plot.gam(select = 6, xlab = "Time of day\n(0.5 = noon)", ylab = 'Estimated smooth for brood temp, \nTreatment group, Temp decreasing (°C)', g01$gam, all.terms = TRUE, rug = FALSE, shade = TRUE)
 
