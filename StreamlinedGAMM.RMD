@@ -5,6 +5,8 @@ date: "15 Jan 2018"
 output:
   html_document: default
   html: default
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -31,12 +33,12 @@ ipak(packages)
 theme_set(theme_classic())
 
 # set wd
-setwd("/Users/cswitzer/Documents/GitRepos/thermoRegImidacloprid")
+setwd("/Users/callin/Documents/GitRepos/thermoRegImidacloprid")
 
 # make a figures directory, if it doesn't exist
 dir.create(file.path(getwd(), "figuresStreamlined"), showWarnings = FALSE)
 figDir <- file.path(getwd(), "figuresStreamlined")
-dataDir <- '/Users/cswitzer/Documents/GitRepos/thermoRegImidacloprid/data'
+dataDir <- 'D:/Dropbox/dataForCallin'
 
 # make new data table directory (empty)
 dir.create(file.path(getwd(), "/dataTables"), showWarnings = FALSE)
@@ -135,20 +137,20 @@ combData <- merge(combData, df3, all.x = TRUE)
 
 p2 <- ggplot(drop_na(combData[seq(1, nrow(combData), length.out = 20000), ]), aes(x = time, y = ambient)) + 
   geom_rect(aes(xmin = time, xmax = time, ymin = 0, ymax = 1, color = tempIncrease, fill = tempIncrease), size = 0.1) +
-  geom_line(size = 0.1) + 
-  geom_line(aes(y = rollMeanAmbient, color = tempIncrease, group = 1), alpha = 0.5) +
+  geom_line(size = 0.8) + 
+  geom_line(aes(y = rollMeanAmbient, color = tempIncrease, group = 1), alpha = 1, size = 0.8) +
   facet_grid(cohort~., labeller = labeller(.rows = label_both, .cols = label_both)) + 
   scale_color_viridis(discrete = TRUE,begin = 0.4, end = 1, name = "Temperature") +
   scale_fill_viridis(discrete = TRUE,begin = 0.4, end = 1, name = "Temperature") +
   theme(legend.position = "right") + 
-  labs(x = "Time (days)", y = "Ambient temperature (Â°C)")
+  labs(x = "Time (days)", y = "Ambient temperature (°C)")
 p2
 
-png(file.path(figDir, "ambientIncreasingDecreasing.png"), width = 10, height= 7, units = "in", res = 250)
+png(file.path(figDir, "ambientIncreasingDecreasing_revision1.png"), width = 10, height= 7, units = "in", res = 550)
 p2 # figure s6
 dev.off()
 
-pdf(file.path(figDir,'ambientIncreasingDecreasing.pdf'), width = 10, height= 7)
+pdf(file.path(figDir,'ambientIncreasingDecreasing_revision1.pdf'), width = 10, height= 7)
 p2
 dev.off()
 ```
